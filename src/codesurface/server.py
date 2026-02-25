@@ -20,11 +20,12 @@ mcp = FastMCP(
 
 _conn = None
 _project_path: Path | None = None
+_file_mtimes: dict[str, float] = {}  # rel_path → mtime
 
 
-def _index_project(project_path: Path) -> str:
-    """Parse C# files and rebuild the in-memory database. Returns a status summary."""
-    global _conn
+def _index_full(project_path: Path) -> str:
+    """Full parse + rebuild. Used on startup."""
+    global _conn, _file_mtimes
     t0 = time.perf_counter()
     records = cs_parser.parse_directory(project_path)
     parse_time = time.perf_counter() - t0
@@ -33,11 +34,89 @@ def _index_project(project_path: Path) -> str:
     _conn = db.create_memory_db(records)
     db_time = time.perf_counter() - t1
 
+    # Snapshot mtimes
+    _file_mtimes = {}
+    for cs_file in sorted(project_path.rglob("*.cs")):
+        rel = str(cs_file.relative_to(project_path)).replace("\\", "/")
+        try:
+            _file_mtimes[rel] = cs_file.stat().st_mtime
+        except OSError:
+            pass
+
     stats = db.get_stats(_conn)
     return (
         f"Indexed {stats['total']} records from {stats.get('files', 0)} files "
         f"in {parse_time + db_time:.2f}s (parse: {parse_time:.2f}s, db: {db_time:.2f}s)"
     )
+
+
+def _index_incremental(project_path: Path) -> str:
+    """Re-parse only changed/new/deleted files. Updates existing DB in-place."""
+    global _file_mtimes
+    if _conn is None:
+        return _index_full(project_path)
+
+    t0 = time.perf_counter()
+
+    # Scan current files
+    current: dict[str, float] = {}
+    for cs_file in sorted(project_path.rglob("*.cs")):
+        rel = str(cs_file.relative_to(project_path)).replace("\\", "/")
+        try:
+            current[rel] = cs_file.stat().st_mtime
+        except OSError:
+            pass
+
+    old_keys = set(_file_mtimes)
+    new_keys = set(current)
+
+    deleted = old_keys - new_keys
+    added = new_keys - old_keys
+    changed = {k for k in old_keys & new_keys if current[k] != _file_mtimes[k]}
+
+    dirty = added | changed
+    stale = deleted | changed  # records from these files need removal
+
+    if not dirty and not stale:
+        elapsed = time.perf_counter() - t0
+        stats = db.get_stats(_conn)
+        return (
+            f"No changes detected ({len(current)} files scanned in {elapsed:.3f}s). "
+            f"Index: {stats['total']} records"
+        )
+
+    # Remove stale records
+    if stale:
+        db.delete_by_files(_conn, list(stale))
+
+    # Parse dirty files
+    new_records = []
+    for rel in sorted(dirty):
+        full_path = project_path / rel.replace("/", "\\")
+        try:
+            file_records = cs_parser._parse_cs_file(full_path, project_path)
+            new_records.extend(file_records)
+        except Exception:
+            pass
+
+    if new_records:
+        db.insert_records(_conn, new_records)
+
+    # Update snapshot
+    _file_mtimes = current
+
+    elapsed = time.perf_counter() - t0
+    stats = db.get_stats(_conn)
+    parts = [f"Incremental reindex in {elapsed:.3f}s:"]
+    if added:
+        parts.append(f"  added {len(added)} file(s)")
+    if changed:
+        parts.append(f"  updated {len(changed)} file(s)")
+    if deleted:
+        parts.append(f"  removed {len(deleted)} file(s)")
+    parts.append(f"  parsed {len(new_records)} records from {len(dirty)} file(s)")
+    parts.append(f"  index total: {stats['total']} records from {stats.get('files', 0)} files")
+    return "\n".join(parts)
 
 
 def _format_record(r: dict) -> str:
@@ -271,18 +350,17 @@ def get_stats() -> str:
 
 @mcp.tool()
 def reindex() -> str:
-    """Re-scan the project directory and rebuild the index.
+    """Incrementally update the index by re-parsing only changed, new, or deleted files.
 
-    Call this after creating or deleting C# files, or changing public APIs,
-    to pick up changes without restarting the MCP server.
+    Uses file modification times to detect changes. Fast on large codebases —
+    only touches files that actually changed since the last index.
     """
     if _project_path is None:
         return "No project path configured. Start the server with --project <path>."
     if not _project_path.is_dir():
         return f"Project path not found: {_project_path}"
 
-    summary = _index_project(_project_path)
-    return f"Reindexed: {summary}"
+    return _index_incremental(_project_path)
 
 
 def main():
@@ -299,7 +377,7 @@ def main():
         if not _project_path.is_dir():
             print(f"Warning: Project path not found: {args.project}", file=sys.stderr)
         else:
-            summary = _index_project(_project_path)
+            summary = _index_full(_project_path)
             print(summary, file=sys.stderr)
 
     mcp.run()

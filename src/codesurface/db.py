@@ -123,6 +123,19 @@ def insert_records(conn: sqlite3.Connection, records: list[dict]) -> int:
     return len(rows)
 
 
+def delete_by_files(conn: sqlite3.Connection, file_paths: list[str]) -> int:
+    """Delete all records belonging to the given file paths. Returns count deleted."""
+    if not file_paths:
+        return 0
+    placeholders = ",".join("?" for _ in file_paths)
+    cursor = conn.execute(
+        f"DELETE FROM api_records WHERE file_path IN ({placeholders})",
+        file_paths,
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
 def search(conn: sqlite3.Connection, query: str, n: int = 10,
            member_type: str | None = None) -> list[dict]:
     """Full-text search with BM25 ranking + PascalCase-aware matching.
