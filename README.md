@@ -2,7 +2,7 @@
 
 **MCP server that indexes a C# codebase's public API at startup and serves it via compact tool responses — saving tokens vs reading source files.**
 
-Parses all `.cs` files, extracts public classes/methods/properties/fields/events, and serves them through 4 MCP tools. Works with Claude Code, Cursor, Windsurf, or any MCP-compatible AI tool.
+Parses all `.cs` files, extracts public classes/methods/properties/fields/events, and serves them through 5 MCP tools. Works with Claude Code, Cursor, Windsurf, or any MCP-compatible AI tool.
 
 ## Quick Start
 
@@ -35,6 +35,7 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 | `get_signature` | Exact signature by name or FQN | "TryMerge", "CampGame.Services.IMergeService.TryMerge" |
 | `get_class` | Full class reference card — all public members | "BlastBoardModel" → all methods/fields/properties |
 | `get_stats` | Overview of indexed codebase | File count, record counts, namespace breakdown |
+| `reindex` | Rebuild index without restarting | Call after creating/renaming/deleting C# files |
 
 ## Benchmarks
 
@@ -99,6 +100,7 @@ Use the `codesurface` MCP tools to look up your project's classes, methods, prop
 | Need exact method signature | `get_signature` | `get_signature("TryMerge")` |
 | Want all members on a class | `get_class` | `get_class("BlastBoardModel")` |
 | Overview of indexed codebase | `get_stats` | `get_stats()` |
+| After creating/renaming C# files | `reindex` | `reindex()` |
 ```
 
 </details>
@@ -109,7 +111,7 @@ Use the `codesurface` MCP tools to look up your project's classes, methods, prop
 ```
 codesurface/
 ├── src/codesurface/
-│   ├── server.py        # MCP server — 4 tools
+│   ├── server.py        # MCP server — 5 tools
 │   ├── db.py            # SQLite + FTS5 database layer
 │   └── cs_parser.py     # C# public API parser
 ├── pyproject.toml
@@ -129,8 +131,8 @@ codesurface/
 - Check Python version: `python --version` (needs 3.10+)
 - Check `mcp[cli]` is installed: `pip install mcp[cli]`
 
-**Stale results**
-- The index is built at server startup. Restart the MCP server to pick up new/changed files
+**Stale results after editing C# files**
+- Call `reindex()` to rebuild the index without restarting the server
 
 </details>
 
