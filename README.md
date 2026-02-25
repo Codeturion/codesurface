@@ -17,13 +17,15 @@ Then add to your `.mcp.json`:
   "mcpServers": {
     "codesurface": {
       "command": "codesurface",
-      "args": ["--project", "/path/to/your/Assets/Scripts"]
+      "args": ["--project", "/path/to/your/src"]
     }
   }
 }
 ```
 
-Restart your AI tool and ask: *"What methods does BlastBoardModel have?"*
+Point `--project` at any directory containing `.cs` files — a Unity `Assets/Scripts` folder, a .NET `src/` tree, a Godot C# project, etc.
+
+Restart your AI tool and ask: *"What methods does MyService have?"*
 
 ## Tools
 
@@ -61,7 +63,7 @@ Add to `<project>/.mcp.json`:
   "mcpServers": {
     "codesurface": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/codesurface", "codesurface", "--project", "/path/to/your/Assets/Scripts"]
+      "args": ["run", "--directory", "/path/to/codesurface", "codesurface", "--project", "/path/to/your/src"]
     }
   }
 }
@@ -73,7 +75,7 @@ Add to `<project>/.mcp.json`:
   "mcpServers": {
     "codesurface": {
       "command": "codesurface",
-      "args": ["--project", "/path/to/your/Assets/Scripts"]
+      "args": ["--project", "/path/to/your/src"]
     }
   }
 }
@@ -109,10 +111,8 @@ codesurface/
 ├── src/codesurface/
 │   ├── server.py        # MCP server — 4 tools
 │   ├── db.py            # SQLite + FTS5 database layer
-│   ├── cs_parser.py     # C# public API parser
-│   └── benchmark.py     # Token savings benchmark
+│   └── cs_parser.py     # C# public API parser
 ├── pyproject.toml
-├── workflow-benchmark.md
 └── README.md
 ```
 
