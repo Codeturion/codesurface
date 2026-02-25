@@ -19,6 +19,25 @@ mcp = FastMCP(
 )
 
 _conn = None
+_project_path: Path | None = None
+
+
+def _index_project(project_path: Path) -> str:
+    """Parse C# files and rebuild the in-memory database. Returns a status summary."""
+    global _conn
+    t0 = time.perf_counter()
+    records = cs_parser.parse_directory(project_path)
+    parse_time = time.perf_counter() - t0
+
+    t1 = time.perf_counter()
+    _conn = db.create_memory_db(records)
+    db_time = time.perf_counter() - t1
+
+    stats = db.get_stats(_conn)
+    return (
+        f"Indexed {stats['total']} records from {stats.get('files', 0)} files "
+        f"in {parse_time + db_time:.2f}s (parse: {parse_time:.2f}s, db: {db_time:.2f}s)"
+    )
 
 
 def _format_record(r: dict) -> str:
@@ -250,6 +269,22 @@ def get_stats() -> str:
     return "\n".join(parts)
 
 
+@mcp.tool()
+def reindex() -> str:
+    """Re-scan the project directory and rebuild the index.
+
+    Call this after creating, renaming, or deleting C# files to pick up changes
+    without restarting the MCP server.
+    """
+    if _project_path is None:
+        return "No project path configured. Start the server with --project <path>."
+    if not _project_path.is_dir():
+        return f"Project path not found: {_project_path}"
+
+    summary = _index_project(_project_path)
+    return f"Reindexed: {summary}"
+
+
 def main():
     """Entry point for the MCP server."""
     parser = argparse.ArgumentParser(description="codesurface MCP server")
@@ -257,27 +292,15 @@ def main():
                         help="Path to C# source directory to index")
     args, remaining = parser.parse_known_args()
 
-    global _conn
+    global _project_path
 
     if args.project:
-        project_path = Path(args.project)
-        if not project_path.is_dir():
+        _project_path = Path(args.project)
+        if not _project_path.is_dir():
             print(f"Warning: Project path not found: {args.project}", file=sys.stderr)
         else:
-            t0 = time.perf_counter()
-            records = cs_parser.parse_directory(project_path)
-            parse_time = time.perf_counter() - t0
-
-            t1 = time.perf_counter()
-            _conn = db.create_memory_db(records)
-            db_time = time.perf_counter() - t1
-
-            stats = db.get_stats(_conn)
-            print(
-                f"Indexed {stats['total']} records from {stats.get('files', 0)} files "
-                f"in {parse_time + db_time:.2f}s (parse: {parse_time:.2f}s, db: {db_time:.2f}s)",
-                file=sys.stderr,
-            )
+            summary = _index_project(_project_path)
+            print(summary, file=sys.stderr)
 
     mcp.run()
 
