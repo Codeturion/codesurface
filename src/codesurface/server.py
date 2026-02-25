@@ -273,8 +273,8 @@ def get_stats() -> str:
 def reindex() -> str:
     """Re-scan the project directory and rebuild the index.
 
-    Call this after creating, renaming, or deleting C# files to pick up changes
-    without restarting the MCP server.
+    Call this after creating or deleting C# files, or changing public APIs,
+    to pick up changes without restarting the MCP server.
     """
     if _project_path is None:
         return "No project path configured. Start the server with --project <path>."

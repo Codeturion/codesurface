@@ -35,7 +35,7 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 | `get_signature` | Exact signature by name or FQN | "TryMerge", "CampGame.Services.IMergeService.TryMerge" |
 | `get_class` | Full class reference card — all public members | "BlastBoardModel" → all methods/fields/properties |
 | `get_stats` | Overview of indexed codebase | File count, record counts, namespace breakdown |
-| `reindex` | Rebuild index without restarting | Call after creating/renaming/deleting C# files |
+| `reindex` | Rebuild index without restarting | Call after creating/deleting files or changing public APIs |
 
 ## Benchmarks
 
@@ -100,7 +100,7 @@ Use the `codesurface` MCP tools to look up your project's classes, methods, prop
 | Need exact method signature | `get_signature` | `get_signature("TryMerge")` |
 | Want all members on a class | `get_class` | `get_class("BlastBoardModel")` |
 | Overview of indexed codebase | `get_stats` | `get_stats()` |
-| After creating/renaming C# files | `reindex` | `reindex()` |
+| After creating/deleting C# files | `reindex` | `reindex()` |
 ```
 
 </details>
