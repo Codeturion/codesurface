@@ -32,10 +32,10 @@ _METHOD_RE = re.compile(
     r"\(([^)]*)\)"                 # parameters (may be empty)
 )
 
-# Constructor (public ClassName(...))
+# Constructor (public ClassName(...)  — closing paren may be on a later line)
 _CTOR_RE = re.compile(
     r"^\s*(?:public)\s+"
-    r"(\w+)\s*\(([^)]*)\)"         # ClassName(params)
+    r"(\w+)\s*\(([^)]*)\)?"        # ClassName(params — closing paren optional
 )
 
 # Property declarations
@@ -527,7 +527,7 @@ def _collect_params(lines: list[str], line_idx: int, initial: str) -> str:
         return params
 
     # Multi-line params — collect until closing paren
-    for j in range(line_idx + 1, min(line_idx + 10, len(lines))):
+    for j in range(line_idx + 1, min(line_idx + 50, len(lines))):
         part = lines[j].strip()
         params += " " + part
         if ")" in part:

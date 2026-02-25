@@ -289,13 +289,20 @@ def get_class(class_name: str) -> str:
     for m in members:
         if m["member_type"] == "type":
             continue
-        groups.setdefault(m["member_type"], []).append(m)
+        # Separate constructors from regular methods
+        if m["member_type"] == "method" and m.get("member_name") == short_name:
+            groups.setdefault("constructor", []).append(m)
+        else:
+            groups.setdefault(m["member_type"], []).append(m)
 
-    for mtype in ("method", "property", "field", "event"):
+    for mtype in ("constructor", "method", "property", "field", "event"):
         group = groups.get(mtype, [])
         if not group:
             continue
-        parts.append(f"-- {mtype.upper()}S ({len(group)}) --")
+        label = mtype.upper() + "S"
+        if mtype == "constructor":
+            label = "CONSTRUCTORS" if len(group) > 1 else "CONSTRUCTOR"
+        parts.append(f"-- {label} ({len(group)}) --")
         for m in group:
             sig = m.get("signature", m["member_name"])
             summary = m.get("summary", "")
