@@ -5,26 +5,36 @@ build-backend = "hatchling.build"
 [project]
 name = "codesurface"
 version = "0.1.0"
-description = "MCP server that indexes a C# codebase's public API at startup and serves it via compact tool responses"
+description = "MCP server that indexes a C# codebase's public API at startup and serves it via compact tool responses — saving tokens vs reading source files"
 readme = "README.md"
-license = "MIT"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
-authors = [{ name = "Frostborn" }]
-keywords = ["mcp", "csharp", "api", "index", "code-intelligence"]
+authors = [
+    {name = "Codeturion", email = "fuatcankoseoglu@gmail.com"},
+]
+keywords = ["mcp", "csharp", "api", "index", "code-intelligence", "unity", "dotnet"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
     "mcp[cli]>=1.8.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Codeturion/codesurface"
+Repository = "https://github.com/Codeturion/codesurface"
+Issues = "https://github.com/Codeturion/codesurface/issues"
+
 [project.scripts]
 codesurface = "codesurface.server:main"
-
-[project.urls]
-Repository = "https://github.com/Frostborn/codesurface"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/codesurface"]
