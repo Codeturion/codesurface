@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codesurface"
+version = "0.1.0"
+description = "MCP server that indexes a C# codebase's public API at startup and serves it via compact tool responses"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Frostborn" }]
+keywords = ["mcp", "csharp", "api", "index", "code-intelligence"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "mcp[cli]>=1.8.0",
+]
+
+[project.scripts]
+codesurface = "codesurface.server:main"
+
+[project.urls]
+Repository = "https://github.com/Frostborn/codesurface"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codesurface"]
