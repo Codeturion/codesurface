@@ -128,6 +128,22 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
             pending_decorators = []
             continue
 
+        # Skip docstrings / multi-line strings
+        if stripped.startswith(('"""', "'''")):
+            quote = stripped[:3]
+            # Single-line docstring: """text"""
+            if stripped.count(quote) >= 2 and stripped.endswith(quote) and len(stripped) > 3:
+                i += 1
+                continue
+            # Multi-line: skip until closing triple-quote
+            i += 1
+            while i < len(lines):
+                if quote in lines[i]:
+                    break
+                i += 1
+            i += 1
+            continue
+
         # Track indentation to pop class stack and exit function bodies
         if stripped and not stripped.startswith("#"):
             indent = _indent_level(line)
@@ -200,6 +216,13 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
 
             in_class = bool(class_stack) and indent > class_stack[-1][1]
             current_class = class_stack[-1][0] if in_class else None
+
+            # Skip @overload variants — the real implementation follows without @overload
+            if "overload" in pending_decorators:
+                in_func_indent = indent
+                pending_decorators = []
+                i = end_line + 1
+                continue
 
             is_property = "property" in pending_decorators
             is_static = "staticmethod" in pending_decorators
