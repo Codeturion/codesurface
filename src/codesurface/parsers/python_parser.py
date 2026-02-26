@@ -116,6 +116,7 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
     i = 0
     class_stack: list[tuple[str, int, str]] = []  # (class_name, indent_level, bases)
     pending_decorators: list[str] = []
+    in_func_indent: int | None = None  # indent of current function (to skip body lines)
 
     while i < len(lines):
         line = lines[i]
@@ -127,11 +128,14 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
             pending_decorators = []
             continue
 
-        # Track indentation to pop class stack
+        # Track indentation to pop class stack and exit function bodies
         if stripped and not stripped.startswith("#"):
             indent = _indent_level(line)
             while class_stack and indent <= class_stack[-1][1]:
                 class_stack.pop()
+                in_func_indent = None  # left the class, so left any function too
+            if in_func_indent is not None and indent <= in_func_indent:
+                in_func_indent = None
 
         # Decorator
         dec_match = _DECORATOR_RE.match(line)
@@ -146,6 +150,12 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
             indent = len(cls_match.group(1))
             class_name = cls_match.group(2)
             bases = cls_match.group(3) or ""
+
+            # Skip classes nested inside function bodies
+            if in_func_indent is not None and indent > in_func_indent:
+                pending_decorators = []
+                i += 1
+                continue
 
             class_stack.append((class_name, indent, bases))
 
@@ -178,6 +188,12 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
         if def_match:
             indent = len(def_match.group(1))
             func_name = def_match.group(2)
+
+            # Skip nested functions (defined inside another function body)
+            if in_func_indent is not None and indent > in_func_indent:
+                pending_decorators = []
+                i += 1
+                continue
 
             # Collect full signature (may span multiple lines)
             sig_text, end_line = _collect_signature(lines, i)
@@ -280,12 +296,15 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                         file_path=rel_path,
                     ))
 
+            # Track function scope to skip nested definitions
+            in_func_indent = indent
+
             pending_decorators = []
             i = end_line + 1
             continue
 
-        # Class-level fields and enum members
-        if class_stack and line[0].isspace():
+        # Class-level fields and enum members (only at class body level, not inside methods)
+        if class_stack and line[0].isspace() and in_func_indent is None:
             current_class = class_stack[-1][0]
             current_indent = class_stack[-1][1]
             current_bases = class_stack[-1][2]
