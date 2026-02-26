@@ -55,6 +55,8 @@ def all_extensions() -> list[str]:
 
 from .csharp import CSharpParser  # noqa: E402
 from .python_parser import PythonParser  # noqa: E402
+from .typescript import TypeScriptParser  # noqa: E402
 
 register("csharp", CSharpParser)
 register("python", PythonParser)
+register("typescript", TypeScriptParser)
