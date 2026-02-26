@@ -87,7 +87,9 @@ class PythonParser(BaseParser):
                 continue
             try:
                 records.extend(self.parse_file(f, directory))
-            except Exception:
+            except Exception as e:
+                import sys
+                print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
                 continue
         return records
 
@@ -265,8 +267,7 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                         ))
                     elif is_property:
                         # Property
-                        sig = f"{return_type} {func_name}" if return_type else func_name
-                        sig += " { get; }"
+                        sig = f"property {func_name}: {return_type}" if return_type else f"property {func_name}"
                         records.append(_build_record(
                             fqn=f"{base_fqn}.{func_name}",
                             namespace=module,
@@ -645,7 +646,7 @@ def _extract_docstring(lines: list[str], decl_line: int) -> str:
     for quote in (_DOCSTRING_TRIPLE_DQ, _DOCSTRING_TRIPLE_SQ):
         if stripped.startswith(quote):
             # Single-line docstring?
-            if stripped.endswith(quote) and len(stripped) > 6:
+            if stripped.endswith(quote) and len(stripped) >= 6:
                 return stripped[3:-3].strip()
 
             # Multi-line docstring
