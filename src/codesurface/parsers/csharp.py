@@ -1,4 +1,4 @@
-"""Enhanced C# parser that captures ALL public declarations — not just documented ones.
+"""C# parser that captures all public declarations.
 
 Scans every line tracking namespace/class context, captures public members
 with their full signatures. Doc comments (///) are extracted as bonus data.
@@ -6,6 +6,8 @@ with their full signatures. Doc comments (///) are extracted as bonus data.
 
 import re
 from pathlib import Path
+
+from .base import BaseParser
 
 
 # --- Regex patterns ---
@@ -32,10 +34,10 @@ _METHOD_RE = re.compile(
     r"\(([^)]*)\)"                 # parameters (may be empty)
 )
 
-# Constructor (public ClassName(...)  — closing paren may be on a later line)
+# Constructor (public ClassName(...)  -- closing paren may be on a later line)
 _CTOR_RE = re.compile(
     r"^\s*(?:public)\s+"
-    r"(\w+)\s*\(([^)]*)\)?"        # ClassName(params — closing paren optional
+    r"(\w+)\s*\(([^)]*)\)?"        # ClassName(params -- closing paren optional
 )
 
 # Property declarations
@@ -87,7 +89,7 @@ _XML_TAG_RE = re.compile(r"<[^>]+>")
 # Enum member
 _ENUM_MEMBER_RE = re.compile(r"^\s*(\w+)\s*(?:=\s*\S+)?\s*,?\s*(?://.*)?$")
 
-# Skip patterns — lines that look like declarations but aren't
+# Skip patterns -- lines that look like declarations but aren't
 _SKIP_NAMES = frozenset({
     "class", "struct", "interface", "enum", "namespace",
     "if", "else", "for", "while", "switch", "try", "catch",
@@ -96,19 +98,15 @@ _SKIP_NAMES = frozenset({
 })
 
 
-def parse_directory(directory: Path) -> list[dict]:
-    """Recursively parse all .cs files for public API declarations."""
-    records = []
-    cs_files = sorted(directory.rglob("*.cs"))
+class CSharpParser(BaseParser):
+    """Parser for C# source files."""
 
-    for cs_file in cs_files:
-        try:
-            file_records = _parse_cs_file(cs_file, directory)
-            records.extend(file_records)
-        except Exception:
-            continue
+    @property
+    def file_extensions(self) -> list[str]:
+        return [".cs"]
 
-    return records
+    def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
+        return _parse_cs_file(path, base_dir)
 
 
 def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
@@ -145,7 +143,7 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                 i += 1
                 continue
 
-        # Skip single-line comments (but not doc comments — we extract those)
+        # Skip single-line comments (but not doc comments -- we extract those)
         stripped = line.strip()
         if stripped.startswith("//") and not stripped.startswith("///"):
             i += 1
@@ -220,7 +218,7 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
             current_kind = class_stack[-1][1]
             base_fqn = f"{namespace}.{current_class}" if namespace else current_class
 
-            # Inside an interface — members have no access modifier
+            # Inside an interface -- members have no access modifier
             if current_kind == "interface":
                 record = _try_parse_interface_member(
                     line, lines, i, namespace, current_class, rel_path
@@ -526,7 +524,7 @@ def _collect_params(lines: list[str], line_idx: int, initial: str) -> str:
     if ")" in lines[line_idx]:
         return params
 
-    # Multi-line params — collect until closing paren
+    # Multi-line params -- collect until closing paren
     for j in range(line_idx + 1, min(line_idx + 50, len(lines))):
         part = lines[j].strip()
         params += " " + part
@@ -547,7 +545,7 @@ def _extract_accessors(line: str) -> str:
     if "set;" in line or "set ;" in line:
         parts.append("set;")
     if not parts:
-        # Auto-property or complex accessor — just say get/set
+        # Auto-property or complex accessor -- just say get/set
         if "=>" in line:
             parts.append("get;")
         else:
