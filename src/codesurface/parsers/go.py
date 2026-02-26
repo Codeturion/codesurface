@@ -23,6 +23,18 @@ _SKIP_DIRS = frozenset({
 
 _SKIP_FILE_SUFFIX = "_test.go"
 
+# Go reserved words that can't be identifiers
+_GO_KEYWORDS = frozenset({
+    "func", "type", "var", "const", "import", "package",
+    "return", "if", "else", "for", "range", "switch",
+    "case", "default", "go", "defer", "select", "chan",
+    "map", "struct", "interface", "true", "false", "nil",
+    "iota", "break", "continue", "goto", "fallthrough",
+})
+
+# Max length for const/var values in signatures before truncation
+_MAX_VALUE_LEN = 60
+
 # --- Regex patterns ---
 
 # Package declaration: package main
@@ -164,7 +176,7 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
+    rel_path = path.relative_to(base_dir).as_posix()
     lines = text.splitlines()
 
     # Skip generated files (Go standard: "Code generated ... DO NOT EDIT")
@@ -187,7 +199,6 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
 
     # Grouped declaration state
     in_group: str | None = None     # "type", "var", or "const"
-    group_paren_depth: int = 0      # paren depth for group block
     group_const_type: str = ""      # remembered type for iota const blocks
     # For type groups with nested struct/interface bodies:
     group_type_name: str = ""
@@ -305,10 +316,6 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
             if in_group == "type":
                 _parse_group_type_entry(
                     stripped, lines, i, package, rel_path, records,
-                    brace_depth, new_depth,
-                    _set_group_type=lambda name, kind, bd: (
-                        _set_group_type_state(name, kind, bd)
-                    ),
                 )
                 # Check if this entry opens a struct/interface body
                 alias_m = _GROUP_TYPE_ALIAS_RE.match(stripped)
@@ -601,8 +608,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                 eq_idx = line.index("=")
                 value = line[eq_idx + 1:].strip().rstrip("{").strip()
                 # Truncate long values
-                if len(value) > 60:
-                    value = value[:57] + "..."
+                if len(value) > _MAX_VALUE_LEN:
+                    value = value[:_MAX_VALUE_LEN - 3] + "..."
                 type_part = f" {const_type}" if const_type else ""
                 sig = f"const {const_name}{type_part} = {value}"
                 fqn = f"{package}.{const_name}"
@@ -633,13 +640,6 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
             seen.add(fqn)
             unique.append(rec)
     return unique
-
-
-# --- Lambda workaround for group type state ---
-
-def _set_group_type_state(name: str, kind: str, bd: int) -> tuple[str, str, int]:
-    """Helper that returns group type state tuple."""
-    return name, kind, bd
 
 
 # --- Struct field parsing ---
@@ -675,11 +675,8 @@ def _try_parse_struct_field(
     if not _is_exported(field_name):
         return
 
-    # Skip if "field_type" looks like a keyword
-    if field_name in ("func", "type", "var", "const", "import", "package",
-                       "return", "if", "else", "for", "range", "switch",
-                       "case", "default", "go", "defer", "select", "chan",
-                       "map", "struct", "interface"):
+    # Skip if field_name is a Go keyword
+    if field_name in _GO_KEYWORDS:
         return
 
     doc = _look_back_for_doc_comment(lines, idx)
@@ -749,8 +746,6 @@ def _try_parse_interface_method(
 def _parse_group_type_entry(
     stripped: str, lines: list[str], idx: int,
     package: str, file_path: str, records: list[dict],
-    brace_depth: int, new_depth: int,
-    _set_group_type=None,
 ) -> None:
     """Parse a single entry inside a type(...) block."""
     if not stripped or stripped.startswith("//") or stripped in ("{", "}", ")"):
@@ -859,11 +854,7 @@ def _parse_group_var_const_entry(
         return
 
     # Skip if name is a Go keyword
-    if name in ("func", "type", "var", "const", "import", "package",
-                 "return", "if", "else", "for", "range", "switch",
-                 "case", "default", "go", "defer", "select", "chan",
-                 "map", "struct", "interface", "true", "false", "nil",
-                 "iota"):
+    if name in _GO_KEYWORDS:
         return
 
     doc = _look_back_for_doc_comment(lines, idx)
@@ -871,8 +862,8 @@ def _parse_group_var_const_entry(
 
     if group_kind == "const":
         value_str = value.strip() if value else ""
-        if len(value_str) > 60:
-            value_str = value_str[:57] + "..."
+        if len(value_str) > _MAX_VALUE_LEN:
+            value_str = value_str[:_MAX_VALUE_LEN - 3] + "..."
         type_part = f" {the_type}" if the_type else ""
         if value_str:
             sig = f"const {name}{type_part} = {value_str}"
