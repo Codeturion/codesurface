@@ -333,8 +333,16 @@ def _parse_java_file(path: Path, base_dir: Path) -> list[dict]:
 
                     # For records, extract components as fields
                     if kind == "record":
+                        # Collect full declaration in case components span multiple lines
+                        record_decl = line
+                        local_paren = line.count("(") - line.count(")")
+                        j = i + 1
+                        while local_paren > 0 and j < len(lines):
+                            record_decl += " " + lines[j].strip()
+                            local_paren += lines[j].count("(") - lines[j].count(")")
+                            j += 1
                         records.extend(_parse_record_components(
-                            line, fqn, package, type_name, rel_path
+                            record_decl, fqn, package, type_name, rel_path
                         ))
 
                 brace_depth = new_depth
@@ -854,13 +862,14 @@ def _collect_signature(lines: list[str], start: int) -> tuple[str, int]:
     sig = lines[start]
     i = start
 
-    _, depth = _count_braces_and_parens(sig)
-    # Only count parens for multi-line collection
-    paren_depth = sig.count("(") - sig.count(")")
+    # Use string-aware counting to avoid miscounting parens inside literals
+    _, paren_depth = _count_braces_and_parens(sig)
     while paren_depth > 0 and i + 1 < len(lines):
         i += 1
-        sig += " " + lines[i].strip()
-        paren_depth += lines[i].count("(") - lines[i].count(")")
+        next_line = lines[i]
+        sig += " " + next_line.strip()
+        _, delta = _count_braces_and_parens(next_line)
+        paren_depth += delta
 
     return sig, i
 

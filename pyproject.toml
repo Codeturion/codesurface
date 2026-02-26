@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "codesurface"
 version = "0.4.0"
-description = "MCP server that indexes a codebase's public API at startup and serves it via compact tool responses. Pluggable parsers for C#, TypeScript, Python, and more."
+description = "MCP server that indexes a codebase's public API at startup and serves it via compact tool responses. Pluggable parsers for C#, Java, TypeScript, Python, and more."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
