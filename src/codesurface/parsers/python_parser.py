@@ -42,9 +42,9 @@ _CONST_RE = re.compile(
     r"^([A-Z][A-Z0-9_]*)\s*(?::\s*[^=]+)?\s*="
 )
 
-# Class-level typed field: name: Type  or  name: Type = value
-_CLASS_FIELD_RE = re.compile(
-    r"^\s+(\w+)\s*:\s*(.+?)(?:\s*=.*)?$"
+# Class-level typed field: name: (start of type annotation)
+_CLASS_FIELD_START_RE = re.compile(
+    r"^\s+(\w+)\s*:\s*(.+)$"
 )
 
 # Enum member: name = value (simple assignment inside class body)
@@ -338,18 +338,20 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                             continue
 
                 # Typed class field: name: Type = value  or  name: Type
-                field_match = _CLASS_FIELD_RE.match(line)
+                field_match = _CLASS_FIELD_START_RE.match(line)
                 if field_match:
                     field_name = field_match.group(1)
-                    field_type = field_match.group(2).strip()
+                    rest = field_match.group(2).strip()
                     # Skip if it looks like a keyword or starts with underscore
                     if (
                         not field_name.startswith("_")
                         and field_name not in ("class", "def", "return", "pass", "if", "else")
                         and _is_public(current_class, all_names)
                     ):
-                        # Clean trailing = or Field(...) from type
-                        field_type = re.sub(r"\s*=\s*$", "", field_type).strip()
+                        # Collect full type (may span multiple lines)
+                        field_type, skip_lines = _collect_field_type(
+                            rest, lines, i
+                        )
                         sig = f"{field_type} {field_name}"
                         records.append(_build_record(
                             fqn=f"{base_fqn}.{field_name}",
@@ -362,7 +364,7 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                             file_path=rel_path,
                         ))
                         pending_decorators = []
-                        i += 1
+                        i += 1 + skip_lines
                         continue
 
         # Module-level constant (UPPER_CASE) -- only at indent 0, outside classes
@@ -395,6 +397,85 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
 def _indent_level(line: str) -> int:
     """Return the indentation level (number of leading spaces)."""
     return len(line) - len(line.lstrip())
+
+
+def _collect_field_type(rest: str, lines: list[str], start_line: int) -> tuple[str, int]:
+    """Extract the type from a field declaration, handling multi-line annotations.
+
+    *rest* is everything after "name: " on the first line.
+    Returns (cleaned_type, extra_lines_consumed).
+    """
+    # Extract type by finding the top-level = (assignment, not inside brackets)
+    field_type = _extract_type_before_assign(rest)
+
+    # Check if brackets are balanced
+    depth = field_type.count("[") - field_type.count("]")
+    depth += field_type.count("(") - field_type.count(")")
+    extra = 0
+
+    if depth > 0:
+        # Multi-line type annotation -- collect until balanced
+        i = start_line + 1
+        while depth > 0 and i < len(lines):
+            part = lines[i].strip()
+            field_type += " " + part
+            depth += part.count("[") - part.count("]")
+            depth += part.count("(") - part.count(")")
+            extra += 1
+            i += 1
+
+        # Re-extract type (now we have the full text)
+        field_type = _extract_type_before_assign(field_type)
+
+    # Simplify Annotated[T, ...] to just T
+    field_type = _simplify_annotated(field_type)
+
+    return field_type, extra
+
+
+def _extract_type_before_assign(text: str) -> str:
+    """Extract the type portion from text, stopping at top-level = (assignment).
+
+    Respects brackets/parens so Field(alias='foo') doesn't trigger a split.
+    """
+    depth = 0
+    for idx, ch in enumerate(text):
+        if ch in ("[", "("):
+            depth += 1
+        elif ch in ("]", ")"):
+            depth -= 1
+        elif ch == "=" and depth == 0:
+            return text[:idx].strip()
+
+    return text.strip()
+
+
+def _simplify_annotated(type_str: str) -> str:
+    """Simplify Annotated[T, metadata...] to just T.
+
+    Annotated[str, Field(alias='foo')] -> str
+    Annotated[int | None, Field()] -> int | None
+    """
+    match = re.match(r"^Annotated\[(.+)", type_str)
+    if not match:
+        return type_str
+
+    inner = match.group(1)
+    # Remove trailing ]
+    if inner.endswith("]"):
+        inner = inner[:-1]
+
+    # Find the first comma at depth 0 (separates T from metadata)
+    depth = 0
+    for idx, ch in enumerate(inner):
+        if ch in ("[", "("):
+            depth += 1
+        elif ch in ("]", ")"):
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return inner[:idx].strip()
+
+    return inner.strip()
 
 
 def _is_enum_class(bases: str) -> bool:
