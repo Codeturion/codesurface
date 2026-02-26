@@ -8,3 +8,6 @@ build/
 uv.lock
 .env
 .idea
+CLAUDE.md
+.mcp.json
+ROADMAP.md

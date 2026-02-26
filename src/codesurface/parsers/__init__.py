@@ -54,5 +54,7 @@ def all_extensions() -> list[str]:
 # --- Auto-register built-in parsers ---
 
 from .csharp import CSharpParser  # noqa: E402
+from .python_parser import PythonParser  # noqa: E402
 
 register("csharp", CSharpParser)
+register("python", PythonParser)
