@@ -6,9 +6,11 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Blog Post](https://img.shields.io/badge/Blog-Benchmark%20Write--up-blue)](https://www.codeturion.me/blog/reducing-llm-agent-hallucinations-through-constrained-api-retrieval)
 
-**MCP server that indexes a C# codebase's public API at startup and serves it via compact tool responses — saving tokens vs reading source files.**
+**MCP server that indexes your codebase's public API at startup and serves it via compact tool responses — saving tokens vs reading source files.**
 
-Parses all `.cs` files, extracts public classes/methods/properties/fields/events, and serves them through 5 MCP tools. Works with Claude Code, Cursor, Windsurf, or any MCP-compatible AI tool.
+Parses source files, extracts public classes/methods/properties/fields/events, and serves them through 5 MCP tools. Works with Claude Code, Cursor, Windsurf, or any MCP-compatible AI tool.
+
+**Supported languages:** C# (`.cs`), Python (`.py`), TypeScript/TSX (`.ts`, `.tsx`)
 
 ## Quick Start
 
@@ -29,7 +31,7 @@ Then add to your `.mcp.json`:
 }
 ```
 
-Point `--project` at any directory containing `.cs` files — a Unity `Assets/Scripts` folder, a .NET `src/` tree, a Godot C# project, etc.
+Point `--project` at any directory containing supported source files — a Unity `Assets/Scripts` folder, a .NET `src/` tree, a Node.js/React project, a Python package, etc. Languages are auto-detected.
 
 Restart your AI tool and ask: *"What methods does MyService have?"*
 
@@ -42,6 +44,19 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 | `get_class` | Full class reference card — all public members | "BlastBoardModel" → all methods/fields/properties |
 | `get_stats` | Overview of indexed codebase | File count, record counts, namespace breakdown |
 | `reindex` | Incremental index update (mtime-based) | Only re-parses changed/new/deleted files |
+
+## Tested On
+
+| Project | Language | Files | Records | Time |
+|---------|----------|-------|---------|------|
+| [immich](https://github.com/immich-app/immich) | TypeScript | 919 | 7,957 | 0.6s |
+| [ant-design](https://github.com/ant-design/ant-design) | TypeScript | 2,947 | 5,452 | 0.9s |
+| [dify](https://github.com/langgenius/dify) | TypeScript | 4,903 | 5,038 | 1.9s |
+| [vscode](https://github.com/microsoft/vscode) | TypeScript | 6,611 | 88,293 | 9.3s |
+| Unity game (private) | C# | 129 | 1,018 | 0.1s |
+| codesurface (itself) | Python | 7 | 72 | <0.1s |
+
+Zero duplicate FQNs across all projects.
 
 ## Benchmarks
 
@@ -106,7 +121,7 @@ Use the `codesurface` MCP tools to look up your project's classes, methods, prop
 | Need exact method signature | `get_signature` | `get_signature("TryMerge")` |
 | Want all members on a class | `get_class` | `get_class("BlastBoardModel")` |
 | Overview of indexed codebase | `get_stats` | `get_stats()` |
-| After creating/deleting C# files | `reindex` | `reindex()` |
+| After creating/deleting source files | `reindex` | `reindex()` |
 ```
 
 </details>
@@ -117,9 +132,13 @@ Use the `codesurface` MCP tools to look up your project's classes, methods, prop
 ```
 codesurface/
 ├── src/codesurface/
-│   ├── server.py        # MCP server — 5 tools
-│   ├── db.py            # SQLite + FTS5 database layer
-│   └── cs_parser.py     # C# public API parser
+│   ├── server.py           # MCP server — 5 tools
+│   ├── db.py               # SQLite + FTS5 database layer
+│   └── parsers/
+│       ├── base.py         # BaseParser ABC
+│       ├── csharp.py       # C# parser
+│       ├── python_parser.py # Python parser
+│       └── typescript.py   # TypeScript/TSX parser
 ├── pyproject.toml
 └── README.md
 ```
@@ -130,14 +149,14 @@ codesurface/
 <summary>Troubleshooting</summary>
 
 **"No codebase indexed"**
-- Ensure `--project` points to a directory containing `.cs` files
+- Ensure `--project` points to a directory containing supported source files (`.cs`, `.py`, `.ts`, `.tsx`)
 - The server indexes at startup — check stderr for the "Indexed N records" message
 
 **Server won't start**
 - Check Python version: `python --version` (needs 3.10+)
 - Check `mcp[cli]` is installed: `pip install mcp[cli]`
 
-**Stale results after editing C# files**
+**Stale results after editing source files**
 - Call `reindex()` — only re-parses files whose modification time changed, fast even on large codebases
 
 </details>
