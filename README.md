@@ -49,14 +49,16 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 
 | Project | Language | Files | Records | Time |
 |---------|----------|-------|---------|------|
+| [vscode](https://github.com/microsoft/vscode) | TypeScript | 6,611 | 88,293 | 9.3s |
+| [langchain](https://github.com/langchain-ai/langchain) | Python | 1,880 | 12,418 | 1.1s |
+| [pydantic](https://github.com/pydantic/pydantic) | Python | 365 | 9,648 | 0.3s |
 | [immich](https://github.com/immich-app/immich) | TypeScript | 919 | 7,957 | 0.6s |
+| [fastapi](https://github.com/tiangolo/fastapi) | Python | 881 | 5,713 | 0.5s |
 | [ant-design](https://github.com/ant-design/ant-design) | TypeScript | 2,947 | 5,452 | 0.9s |
 | [dify](https://github.com/langgenius/dify) | TypeScript | 4,903 | 5,038 | 1.9s |
-| [vscode](https://github.com/microsoft/vscode) | TypeScript | 6,611 | 88,293 | 9.3s |
+| [crawlee-python](https://github.com/apify/crawlee-python) | Python | 386 | 2,473 | 0.3s |
+| [flask](https://github.com/pallets/flask) | Python | 63 | 872 | <0.1s |
 | Unity game (private) | C# | 129 | 1,018 | 0.1s |
-| codesurface (itself) | Python | 7 | 72 | <0.1s |
-
-Zero duplicate FQNs across all projects.
 
 ## Benchmarks
 
