@@ -1,4 +1,4 @@
-"""MCP server that indexes a C# codebase's public API on startup."""
+"""MCP server that indexes a codebase's public API on startup."""
 
 import argparse
 import json
@@ -8,12 +8,13 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from . import cs_parser, db
+from . import db
+from .parsers import all_extensions, detect_languages, get_parser, get_parsers_for_project
 
 mcp = FastMCP(
     "codesurface",
     instructions=(
-        "C# codebase API server. Use these tools to look up classes, methods, "
+        "Codebase API server. Use these tools to look up classes, methods, "
         "properties, and fields instead of reading source files."
     ),
 )
@@ -23,30 +24,48 @@ _project_path: Path | None = None
 _file_mtimes: dict[str, float] = {}  # rel_path → mtime
 
 
-def _index_full(project_path: Path) -> str:
+def _index_full(project_path: Path, language: str | None = None) -> str:
     """Full parse + rebuild. Used on startup."""
     global _conn, _file_mtimes
     t0 = time.perf_counter()
-    records = cs_parser.parse_directory(project_path)
+
+    if language:
+        parsers = [get_parser(language)]
+    else:
+        parsers = get_parsers_for_project(project_path)
+
+    if not parsers:
+        return "No supported source files detected in project directory."
+
+    records = []
+    for parser in parsers:
+        records.extend(parser.parse_directory(project_path))
     parse_time = time.perf_counter() - t0
 
     t1 = time.perf_counter()
     _conn = db.create_memory_db(records)
     db_time = time.perf_counter() - t1
 
-    # Snapshot mtimes
+    # Snapshot mtimes for all registered extensions used
+    extensions = set()
+    for parser in parsers:
+        extensions.update(parser.file_extensions)
+
     _file_mtimes = {}
-    for cs_file in sorted(project_path.rglob("*.cs")):
-        rel = str(cs_file.relative_to(project_path)).replace("\\", "/")
-        try:
-            _file_mtimes[rel] = cs_file.stat().st_mtime
-        except OSError:
-            pass
+    for ext in extensions:
+        for f in sorted(project_path.rglob(f"*{ext}")):
+            rel = str(f.relative_to(project_path)).replace("\\", "/")
+            try:
+                _file_mtimes[rel] = f.stat().st_mtime
+            except OSError:
+                pass
 
     stats = db.get_stats(_conn)
+    langs = ", ".join(type(p).__name__.replace("Parser", "") for p in parsers)
     return (
         f"Indexed {stats['total']} records from {stats.get('files', 0)} files "
-        f"in {parse_time + db_time:.2f}s (parse: {parse_time:.2f}s, db: {db_time:.2f}s)"
+        f"({langs}) in {parse_time + db_time:.2f}s "
+        f"(parse: {parse_time:.2f}s, db: {db_time:.2f}s)"
     )
 
 
@@ -58,14 +77,18 @@ def _index_incremental(project_path: Path) -> str:
 
     t0 = time.perf_counter()
 
+    # Collect all registered extensions
+    extensions = set(all_extensions())
+
     # Scan current files
     current: dict[str, float] = {}
-    for cs_file in sorted(project_path.rglob("*.cs")):
-        rel = str(cs_file.relative_to(project_path)).replace("\\", "/")
-        try:
-            current[rel] = cs_file.stat().st_mtime
-        except OSError:
-            pass
+    for ext in extensions:
+        for f in sorted(project_path.rglob(f"*{ext}")):
+            rel = str(f.relative_to(project_path)).replace("\\", "/")
+            try:
+                current[rel] = f.stat().st_mtime
+            except OSError:
+                pass
 
     old_keys = set(_file_mtimes)
     new_keys = set(current)
@@ -89,12 +112,23 @@ def _index_incremental(project_path: Path) -> str:
     if stale:
         db.delete_by_files(_conn, list(stale))
 
+    # Build extension-to-parser map for dirty files
+    parsers = get_parsers_for_project(project_path)
+    ext_to_parser: dict[str, object] = {}
+    for parser in parsers:
+        for ext in parser.file_extensions:
+            ext_to_parser[ext] = parser
+
     # Parse dirty files
     new_records = []
     for rel in sorted(dirty):
         full_path = project_path / rel.replace("/", "\\")
+        suffix = full_path.suffix
+        parser = ext_to_parser.get(suffix)
+        if parser is None:
+            continue
         try:
-            file_records = cs_parser._parse_cs_file(full_path, project_path)
+            file_records = parser.parse_file(full_path, project_path)
             new_records.extend(file_records)
         except Exception:
             pass
@@ -374,7 +408,9 @@ def main():
     """Entry point for the MCP server."""
     parser = argparse.ArgumentParser(description="codesurface MCP server")
     parser.add_argument("--project", default=None,
-                        help="Path to C# source directory to index")
+                        help="Path to source directory to index")
+    parser.add_argument("--language", default=None,
+                        help="Language to parse (e.g. csharp). Auto-detected if omitted.")
     args, remaining = parser.parse_known_args()
 
     global _project_path
@@ -384,7 +420,7 @@ def main():
         if not _project_path.is_dir():
             print(f"Warning: Project path not found: {args.project}", file=sys.stderr)
         else:
-            summary = _index_full(_project_path)
+            summary = _index_full(_project_path, language=args.language)
             print(summary, file=sys.stderr)
 
     mcp.run()
