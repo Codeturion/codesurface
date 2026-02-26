@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codesurface"
-version = "0.4.1"
-description = "MCP server that indexes a codebase's public API at startup and serves it via compact tool responses. Pluggable parsers for C#, Java, TypeScript, Python, and more."
+version = "0.5.0"
+description = "MCP server that indexes a codebase's public API at startup and serves it via compact tool responses. Pluggable parsers for C#, Go, Java, TypeScript, Python, and more."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
 authors = [
     {name = "Codeturion", email = "fuatcankoseoglu@gmail.com"},
 ]
-keywords = ["mcp", "csharp", "typescript", "python", "java", "api", "index", "code-intelligence"]
+keywords = ["mcp", "csharp", "go", "golang", "typescript", "python", "java", "api", "index", "code-intelligence"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

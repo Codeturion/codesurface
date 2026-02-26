@@ -13,7 +13,7 @@
 
 Parses source files, extracts public classes/methods/properties/fields/events, and serves them through 5 MCP tools. Works with Claude Code, Cursor, Windsurf, or any MCP-compatible AI tool.
 
-**Supported languages:** C# (`.cs`), Java (`.java`), Python (`.py`), TypeScript/TSX (`.ts`, `.tsx`)
+**Supported languages:** C# (`.cs`), Go (`.go`), Java (`.java`), Python (`.py`), TypeScript/TSX (`.ts`, `.tsx`)
 
 ## Quick Start
 
@@ -54,6 +54,7 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 |---------|----------|-------|---------|------|
 | [vscode](https://github.com/microsoft/vscode) | TypeScript | 6,611 | 88,293 | 9.3s |
 | [Paper](https://github.com/PaperMC/Paper) | Java | 2,909 | 33,973 | 2.3s |
+| [client-go](https://github.com/kubernetes/client-go) | Go | 1,794 | 18,970 | 1.3s |
 | [langchain](https://github.com/langchain-ai/langchain) | Python | 1,880 | 12,418 | 1.1s |
 | [pydantic](https://github.com/pydantic/pydantic) | Python | 365 | 9,648 | 0.3s |
 | [guava](https://github.com/google/guava) | Java | 891 | 8,377 | 2.4s |
@@ -63,6 +64,8 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 | [dify](https://github.com/langgenius/dify) | TypeScript | 4,903 | 5,038 | 1.9s |
 | [crawlee-python](https://github.com/apify/crawlee-python) | Python | 386 | 2,473 | 0.3s |
 | [flask](https://github.com/pallets/flask) | Python | 63 | 872 | <0.1s |
+| [cobra](https://github.com/spf13/cobra) | Go | 15 | 249 | <0.1s |
+| [gin](https://github.com/gin-gonic/gin) | Go | 41 | 574 | <0.1s |
 | Unity game (private) | C# | 129 | 1,018 | 0.1s |
 
 ## Benchmarks
@@ -144,6 +147,7 @@ codesurface/
 │   └── parsers/
 │       ├── base.py         # BaseParser ABC
 │       ├── csharp.py       # C# parser
+│       ├── go.py           # Go parser
 │       ├── java.py         # Java parser
 │       ├── python_parser.py # Python parser
 │       └── typescript.py   # TypeScript/TSX parser
@@ -157,7 +161,7 @@ codesurface/
 <summary>Troubleshooting</summary>
 
 **"No codebase indexed"**
-- Ensure `--project` points to a directory containing supported source files (`.cs`, `.java`, `.py`, `.ts`, `.tsx`)
+- Ensure `--project` points to a directory containing supported source files (`.cs`, `.go`, `.java`, `.py`, `.ts`, `.tsx`)
 - The server indexes at startup — check stderr for the "Indexed N records" message
 
 **Server won't start**
