@@ -98,9 +98,9 @@ _METHOD_RE = re.compile(
     _MEMBER_PREFIX + r"(\w+)\s*(?:<[^(]*>)?\s*\("
 )
 
-# field: name: type  or  name = value
+# field: name: type  or  name = value  or  name!: type (definite assignment)
 _FIELD_RE = re.compile(
-    _MEMBER_PREFIX + r"(\w+)\s*[;:=]"
+    _MEMBER_PREFIX + r"(\w+)\s*[!?]?\s*[;:=]"
 )
 
 # Interface method: name(params): RetType;  or  name<T>(params): RetType;
@@ -239,11 +239,12 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
         # Count braces and parens (string-aware)
         open_braces, open_parens = _count_braces_and_parens(line)
         new_depth = brace_depth + open_braces
-        paren_depth = max(0, paren_depth + open_parens)
+        new_paren = max(0, paren_depth + open_parens)
 
         # --- Skip re-exports ---
         if _REEXPORT_RE.match(line):
             brace_depth = new_depth
+            paren_depth = new_paren
             i += 1
             continue
 
@@ -272,6 +273,7 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     lines, i, namespace, class_stack, rel_path
                 ))
                 brace_depth = new_depth
+                paren_depth = new_paren
                 i += 1
                 continue
 
@@ -319,6 +321,7 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     ))
 
                 brace_depth = new_depth
+                paren_depth = new_paren
                 i += 1
                 continue
 
@@ -348,6 +351,7 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     file_path=rel_path,
                 ))
                 brace_depth = new_depth
+                paren_depth = new_paren
                 i += 1
                 continue
 
@@ -361,6 +365,7 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                 if _OVERLOAD_END_RE.search(full_sig):
                     # Skip overload declaration
                     brace_depth = new_depth
+                    paren_depth = new_paren
                     i = end_i + 1
                     continue
 
@@ -385,6 +390,7 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     file_path=rel_path,
                 ))
                 brace_depth = new_depth
+                paren_depth = new_paren
                 i = end_i + 1
                 continue
 
@@ -444,6 +450,7 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                         ))
 
                     brace_depth = new_depth
+                    paren_depth = new_paren
                     i = end_i + 1
                     continue
 
@@ -465,12 +472,14 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                 if record:
                     records.append(record)
                     brace_depth = new_depth
+                    paren_depth = new_paren
                     i += 1
                     continue
 
             elif current_kind == "enum":
                 # Enum members already parsed at declaration time
                 brace_depth = new_depth
+                paren_depth = new_paren
                 i += 1
                 # Pop if we're closing the enum
                 while class_stack and new_depth <= class_stack[-1][2]:
@@ -490,10 +499,12 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                 if record:
                     records.append(record)
                     brace_depth = new_depth
+                    paren_depth = new_paren
                     i += 1
                     continue
 
         brace_depth = new_depth
+        paren_depth = new_paren
 
         # Pop class stack when we close their scope
         while class_stack and brace_depth <= class_stack[-1][2]:
@@ -588,7 +599,7 @@ def _try_parse_class_member(
         if meth_match:
             meth_name = meth_match.group(1)
             if meth_name in _SKIP_NAMES or meth_name in (
-                "get", "set", "constructor", "if", "for", "while",
+                "constructor", "if", "for", "while",
                 "switch", "catch", "return", "throw",
             ):
                 return None
@@ -962,7 +973,7 @@ def _extract_field_type(stripped: str, field_name: str) -> str:
     if idx == -1:
         return ""
     after = stripped[idx + len(field_name):].strip()
-    if after.startswith("?"):
+    if after.startswith(("?", "!")):
         after = after[1:].strip()
     if after.startswith(":"):
         type_str = after[1:].strip()
