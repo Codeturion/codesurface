@@ -54,7 +54,7 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 |---------|----------|-------|---------|------|
 | [vscode](https://github.com/microsoft/vscode) | TypeScript | 6,611 | 88,293 | 9.3s |
 | [Paper](https://github.com/PaperMC/Paper) | Java | 2,909 | 33,973 | 2.3s |
-| [client-go](https://github.com/kubernetes/client-go) | Go | 1,794 | 18,970 | 1.3s |
+| [client-go](https://github.com/kubernetes/client-go) | Go | 219 | 2,760 | 0.4s |
 | [langchain](https://github.com/langchain-ai/langchain) | Python | 1,880 | 12,418 | 1.1s |
 | [pydantic](https://github.com/pydantic/pydantic) | Python | 365 | 9,648 | 0.3s |
 | [guava](https://github.com/google/guava) | Java | 891 | 8,377 | 2.4s |

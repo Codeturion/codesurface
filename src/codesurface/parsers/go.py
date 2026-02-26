@@ -166,6 +166,12 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
 
     rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
     lines = text.splitlines()
+
+    # Skip generated files (Go standard: "Code generated ... DO NOT EDIT")
+    for line in lines[:20]:
+        if "Code generated" in line and "DO NOT EDIT" in line:
+            return []
+
     records: list[dict] = []
 
     # State
@@ -420,9 +426,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                 params_str, returns_str = _extract_func_parts(full_sig, method_name)
                 doc = _look_back_for_doc_comment(lines, i)
 
-                receiver_str = f"*{receiver_type}" if pointer else receiver_type
                 returns_part = f" {returns_str}" if returns_str else ""
-                sig = f"func ({receiver_str}) {method_name}({params_str}){returns_part}"
+                sig = f"{method_name}({params_str}){returns_part}"
 
                 fqn = f"{package}.{receiver_type}.{method_name}"
                 records.append(_build_record(
