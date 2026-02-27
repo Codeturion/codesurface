@@ -446,6 +446,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -475,6 +477,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -500,6 +504,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -527,6 +533,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
                     if "{" in line:
                         current_type = type_name
@@ -545,6 +553,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
                     if "{" in line:
                         current_type = type_name
@@ -565,6 +575,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
 
             brace_depth = new_depth
@@ -590,6 +602,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -622,6 +636,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -692,6 +708,8 @@ def _try_parse_struct_field(
         signature=sig,
         summary=doc,
         file_path=file_path,
+        line_start=idx + 1,
+        line_end=idx + 1,
     ))
 
 
@@ -738,6 +756,8 @@ def _try_parse_interface_method(
         signature=sig,
         summary=doc,
         file_path=file_path,
+        line_start=idx + 1,
+        line_end=idx + 1,
     ))
 
 
@@ -771,6 +791,8 @@ def _parse_group_type_entry(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=idx + 1,
             ))
         return
 
@@ -799,6 +821,8 @@ def _parse_group_type_entry(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         ))
     elif rest.startswith("interface"):
         sig = f"type {name} interface"
@@ -812,6 +836,8 @@ def _parse_group_type_entry(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         ))
     else:
         underlying = rest.rstrip("{").strip()
@@ -826,6 +852,8 @@ def _parse_group_type_entry(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         ))
 
 
@@ -884,6 +912,8 @@ def _parse_group_var_const_entry(
         signature=sig,
         summary=doc,
         file_path=file_path,
+        line_start=idx + 1,
+        line_end=idx + 1,
     ))
 
 

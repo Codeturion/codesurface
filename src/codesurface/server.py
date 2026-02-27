@@ -212,7 +212,14 @@ def _format_record(r: dict) -> str:
 
     fp = r.get("file_path", "")
     if fp:
-        lines.append(f"  File: {fp}")
+        ls = r.get("line_start", 0)
+        le = r.get("line_end", 0)
+        if ls and le and le > ls:
+            lines.append(f"  File: {fp}:{ls}-{le}")
+        elif ls:
+            lines.append(f"  File: {fp}:{ls}")
+        else:
+            lines.append(f"  File: {fp}")
 
     return "\n".join(lines)
 
@@ -356,7 +363,14 @@ def get_class(class_name: str) -> str:
             parts.append(f"Summary: {summary}")
         fp = type_record.get("file_path", "")
         if fp:
-            parts.append(f"File: {fp}")
+            ls = type_record.get("line_start", 0)
+            le = type_record.get("line_end", 0)
+            if ls and le and le > ls:
+                parts.append(f"File: {fp}:{ls}-{le}")
+            elif ls:
+                parts.append(f"File: {fp}:{ls}")
+            else:
+                parts.append(f"File: {fp}")
     parts.append("")
 
     groups: dict[str, list[dict]] = {}

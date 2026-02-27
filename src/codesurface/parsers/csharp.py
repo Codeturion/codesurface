@@ -200,6 +200,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                     params_json=doc.get("params", []),
                     returns_text="",
                     file_path=rel_path,
+                    line_start=i+1,
+                    line_end=i+1,
                 ))
 
                 # For enums, extract members
@@ -248,6 +250,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=[],
                             returns_text="",
                             file_path=rel_path,
+                            line_start=i+1,
+                            line_end=i+1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -272,6 +276,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                         params_json=doc.get("params", []),
                         returns_text="",
                         file_path=rel_path,
+                        line_start=i+1,
+                        line_end=i+1,
                     ))
                     brace_depth = new_depth
                     i += 1
@@ -296,6 +302,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=doc.get("params", []),
                             returns_text=doc.get("returns", ""),
                             file_path=rel_path,
+                            line_start=i+1,
+                            line_end=i+1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -323,6 +331,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=[],
                             returns_text="",
                             file_path=rel_path,
+                            line_start=i+1,
+                            line_end=i+1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -351,6 +361,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=[],
                             returns_text="",
                             file_path=rel_path,
+                            line_start=i+1,
+                            line_end=i+1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -402,6 +414,8 @@ def _try_parse_interface_member(
                 params_json=doc.get("params", []),
                 returns_text=doc.get("returns", ""),
                 file_path=file_path,
+                line_start=idx+1,
+                line_end=idx+1,
             )
 
     # Interface property
@@ -424,6 +438,8 @@ def _try_parse_interface_member(
                 params_json=[],
                 returns_text="",
                 file_path=file_path,
+                line_start=idx+1,
+                line_end=idx+1,
             )
 
     return None
@@ -467,6 +483,8 @@ def _parse_enum_members(
                         params_json=[],
                         returns_text="",
                         file_path=file_path,
+                        line_start=i+1,
+                        line_end=i+1,
                     ))
     return records
 

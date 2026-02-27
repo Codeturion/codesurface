@@ -270,6 +270,8 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=f"const enum {enum_name}",
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
                 records.extend(_parse_enum_members(
                     lines, i, namespace, class_stack, rel_path
@@ -315,6 +317,8 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     signature="".join(sig_parts),
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
                 if kind == "enum":
@@ -351,6 +355,8 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
                 brace_depth = new_depth
                 paren_depth = new_paren
@@ -390,6 +396,8 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=end_i + 1,
                 ))
                 brace_depth = new_depth
                 paren_depth = new_paren
@@ -429,6 +437,8 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                             signature=sig,
                             summary=doc,
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=end_i + 1,
                         ))
                     else:
                         # Regular const value (field)
@@ -449,6 +459,8 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
                             signature=sig,
                             summary=doc,
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=i + 1,
                         ))
 
                     brace_depth = new_depth
@@ -568,6 +580,8 @@ def _try_parse_class_member(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=end_i + 1,
         )
 
     # Getter / Setter
@@ -593,6 +607,8 @@ def _try_parse_class_member(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         )
 
     # Method (has parentheses)
@@ -634,6 +650,8 @@ def _try_parse_class_member(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=end_i + 1,
             )
 
     # Field (no parens, has : or = or ;)
@@ -668,6 +686,8 @@ def _try_parse_class_member(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         )
 
     return None
@@ -714,6 +734,8 @@ def _try_parse_interface_member(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=idx + 1,
             )
 
     # Property: name: Type; or readonly name: Type;
@@ -740,6 +762,8 @@ def _try_parse_interface_member(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         )
 
     return None
@@ -784,6 +808,8 @@ def _parse_enum_members(
                         signature=f"{enum_name}.{name}",
                         summary="",
                         file_path=file_path,
+                        line_start=j + 1,
+                        line_end=j + 1,
                     ))
     return records
 

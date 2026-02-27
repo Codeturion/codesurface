@@ -58,6 +58,7 @@ When you need to find a class, method, property, or field — use the codesurfac
 **Rules:**
 - Before looking up a class or method, use `search` or `get_signature` instead of Grep/Glob/Read
 - Use `get_class` to see all members on a class instead of reading the source file
+- Use the file path and line numbers from tool responses to do targeted reads (`Read(file, offset=N, limit=M)`) instead of reading full files
 - The index auto-refreshes on query misses — no need to manually reindex after editing files
 - Only fall back to Grep/Read when you need implementation details (method bodies, control flow) that the API index doesn't cover
 ```
