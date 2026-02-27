@@ -14,8 +14,9 @@ from .parsers import all_extensions, detect_languages, get_parser, get_parsers_f
 mcp = FastMCP(
     "codesurface",
     instructions=(
-        "Codebase API server. Use these tools to look up classes, methods, "
-        "properties, and fields instead of reading source files."
+        "Codebase API server. When looking up classes, methods, signatures, "
+        "or API structure, use these tools BEFORE Grep, Glob, or Read. "
+        "They return compact, ranked results that save tokens vs reading source files."
     ),
 )
 

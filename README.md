@@ -38,6 +38,30 @@ Point `--project` at any directory containing supported source files — a Unity
 
 Restart your AI tool and ask: *"What methods does MyService have?"*
 
+## CLAUDE.md Snippet
+
+Add this to your project's `CLAUDE.md` (or equivalent instructions file). **This step is important.** Without it, the AI has the tools but won't know when to reach for them.
+
+```markdown
+## Codebase API Lookup (codesurface MCP)
+
+When you need to find a class, method, property, or field — use the codesurface MCP tools BEFORE Grep, Glob, or Read. They return compact, ranked results and save tokens.
+
+| When | Tool | Example |
+|------|------|---------|
+| Searching for an API by keyword | `search` | `search("MergeService")` |
+| Need exact method signature | `get_signature` | `get_signature("TryMerge")` |
+| Want all members on a class | `get_class` | `get_class("BlastBoardModel")` |
+| Overview of indexed codebase | `get_stats` | `get_stats()` |
+| Force refresh after bulk file changes | `reindex` | `reindex()` (auto-refreshes on query misses) |
+
+**Rules:**
+- Before looking up a class or method, use `search` or `get_signature` instead of Grep/Glob/Read
+- Use `get_class` to see all members on a class instead of reading the source file
+- The index auto-refreshes on query misses — no need to manually reindex after editing files
+- Only fall back to Grep/Read when you need implementation details (method bodies, control flow) that the API index doesn't cover
+```
+
 ## Tools
 
 | Tool | Purpose | Example |
@@ -46,7 +70,7 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 | `get_signature` | Exact signature by name or FQN | "TryMerge", "CampGame.Services.IMergeService.TryMerge" |
 | `get_class` | Full class reference card — all public members | "BlastBoardModel" → all methods/fields/properties |
 | `get_stats` | Overview of indexed codebase | File count, record counts, namespace breakdown |
-| `reindex` | Incremental index update (mtime-based) | Only re-parses changed/new/deleted files |
+| `reindex` | Incremental index update (mtime-based) | Only re-parses changed/new/deleted files. Also runs automatically on query misses |
 
 ## Tested On
 
@@ -116,27 +140,6 @@ Add to `<project>/.mcp.json`:
 </details>
 
 <details>
-<summary>CLAUDE.md snippet (recommended)</summary>
-
-Add to your project's `CLAUDE.md` so the AI knows when to use the tools:
-
-```markdown
-## Codebase API Lookup (codesurface MCP)
-
-Use the `codesurface` MCP tools to look up your project's classes, methods, properties, and fields instead of reading source files.
-
-| When | Tool | Example |
-|------|------|---------|
-| Searching for an API by keyword | `search` | `search("MergeService")` |
-| Need exact method signature | `get_signature` | `get_signature("TryMerge")` |
-| Want all members on a class | `get_class` | `get_class("BlastBoardModel")` |
-| Overview of indexed codebase | `get_stats` | `get_stats()` |
-| After creating/deleting source files | `reindex` | `reindex()` |
-```
-
-</details>
-
-<details>
 <summary>Project structure</summary>
 
 ```
@@ -169,7 +172,8 @@ codesurface/
 - Check `mcp[cli]` is installed: `pip install mcp[cli]`
 
 **Stale results after editing source files**
-- Call `reindex()` — only re-parses files whose modification time changed, fast even on large codebases
+- The index auto-refreshes on query misses — if you add a new class and query it, the server reindexes and retries automatically
+- You can also call `reindex()` manually to force an incremental update
 
 </details>
 
