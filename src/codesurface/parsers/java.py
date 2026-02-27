@@ -479,7 +479,7 @@ def _try_parse_class_member(
             summary=doc,
             file_path=file_path,
             line_start=idx + 1,
-            line_end=idx + 1,
+            line_end=end_i + 1,
         )
 
     # Method: public [modifiers] ReturnType name(
@@ -519,7 +519,7 @@ def _try_parse_class_member(
                 summary=doc,
                 file_path=file_path,
                 line_start=idx + 1,
-                line_end=idx + 1,
+                line_end=end_i + 1,
             )
 
     # Field: public [static] [final] Type name [= value];
@@ -615,7 +615,7 @@ def _try_parse_interface_member(
                 summary=doc,
                 file_path=file_path,
                 line_start=idx + 1,
-                line_end=idx + 1,
+                line_end=end_i + 1,
             )
 
     # Interface constant: Type CONSTANT_NAME = value;
