@@ -11,3 +11,4 @@ uv.lock
 CLAUDE.md
 .mcp.json
 ROADMAP.md
+.claude/settings.local.json

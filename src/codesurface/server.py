@@ -22,6 +22,7 @@ mcp = FastMCP(
 _conn = None
 _project_path: Path | None = None
 _file_mtimes: dict[str, float] = {}  # rel_path → mtime
+_index_fresh: bool = True  # True = index is up-to-date, skip reindex on miss
 
 
 def _index_full(project_path: Path, language: str | None = None) -> str:
@@ -153,6 +154,20 @@ def _index_incremental(project_path: Path) -> str:
     return "\n".join(parts)
 
 
+def _auto_reindex() -> bool:
+    """On-miss reindex: check for file changes, update index if needed.
+
+    Returns True if the index was updated (caller should retry the query).
+    """
+    global _index_fresh
+    if _index_fresh or _project_path is None or _conn is None:
+        return False
+    result = _index_incremental(_project_path)
+    _index_fresh = True
+    # If "No changes detected" → index was already current, no retry needed
+    return not result.startswith("No changes detected")
+
+
 def _format_record(r: dict) -> str:
     """Format a single API record into readable text."""
     lines = []
@@ -217,12 +232,17 @@ def search(
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
+    global _index_fresh
     n_results = min(max(n_results, 1), 20)
     results = db.search(_conn, query, n=n_results, member_type=member_type)
 
     if not results:
-        return f"No results found for '{query}'. Try broader search terms."
+        if _auto_reindex():
+            results = db.search(_conn, query, n=n_results, member_type=member_type)
+        if not results:
+            return f"No results found for '{query}'. Try broader search terms."
 
+    _index_fresh = False
     parts = [f"Found {len(results)} result(s) for '{query}':\n"]
     for i, r in enumerate(results, 1):
         parts.append(f"--- Result {i} ---")
@@ -242,37 +262,48 @@ def get_signature(name: str) -> str:
     Args:
         name: Member name or FQN, e.g. "TryMerge", "CampGame.Services.IMergeService.TryMerge"
     """
+    global _index_fresh
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
-    # 1. Exact FQN match
-    record = db.get_by_fqn(_conn, name)
-    if record:
-        return _format_record(record)
+    def _lookup() -> str | None:
+        # 1. Exact FQN match
+        record = db.get_by_fqn(_conn, name)
+        if record:
+            return _format_record(record)
 
-    # 2. Prefix match (overloads or partial FQN)
-    rows = _conn.execute(
-        "SELECT * FROM api_records WHERE fqn LIKE ? ORDER BY fqn",
-        (f"%{name}%",),
-    ).fetchall()
-    if rows:
-        parts = [f"Found {len(rows)} match(es) for '{name}':\n"]
-        for r in rows[:10]:
-            parts.append(_format_record(dict(r)))
-            parts.append("")
-        if len(rows) > 10:
-            parts.append(f"... and {len(rows) - 10} more")
-        return "\n".join(parts)
+        # 2. Prefix match (overloads or partial FQN)
+        rows = _conn.execute(
+            "SELECT * FROM api_records WHERE fqn LIKE ? ORDER BY fqn",
+            (f"%{name}%",),
+        ).fetchall()
+        if rows:
+            parts = [f"Found {len(rows)} match(es) for '{name}':\n"]
+            for r in rows[:10]:
+                parts.append(_format_record(dict(r)))
+                parts.append("")
+            if len(rows) > 10:
+                parts.append(f"... and {len(rows) - 10} more")
+            return "\n".join(parts)
 
-    # 3. FTS fallback
-    results = db.search(_conn, name, n=5)
-    if results:
-        parts = [f"No exact match for '{name}'. Did you mean:\n"]
-        for r in results:
-            parts.append(_format_record(r))
-            parts.append("")
-        return "\n".join(parts)
+        # 3. FTS fallback
+        results = db.search(_conn, name, n=5)
+        if results:
+            parts = [f"No exact match for '{name}'. Did you mean:\n"]
+            for r in results:
+                parts.append(_format_record(r))
+                parts.append("")
+            return "\n".join(parts)
 
+        return None
+
+    result = _lookup()
+    if result is None and _auto_reindex():
+        result = _lookup()
+
+    if result:
+        _index_fresh = False
+        return result
     return f"No results found for '{name}'."
 
 
@@ -286,6 +317,7 @@ def get_class(class_name: str) -> str:
     Args:
         class_name: Class name, e.g. "BlastBoardModel", "IMergeService", "CampGridService"
     """
+    global _index_fresh
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
@@ -293,14 +325,18 @@ def get_class(class_name: str) -> str:
     members = db.get_class_members(_conn, short_name)
 
     if not members:
-        results = db.search(_conn, class_name, n=5, member_type="type")
-        if results:
-            parts = [f"No class '{class_name}' found. Did you mean:\n"]
-            for r in results:
-                parts.append(f"  {r['fqn']} — {r.get('signature', '')}")
-            return "\n".join(parts)
-        return f"No class '{class_name}' found."
+        if _auto_reindex():
+            members = db.get_class_members(_conn, short_name)
+        if not members:
+            results = db.search(_conn, class_name, n=5, member_type="type")
+            if results:
+                parts = [f"No class '{class_name}' found. Did you mean:\n"]
+                for r in results:
+                    parts.append(f"  {r['fqn']} — {r.get('signature', '')}")
+                return "\n".join(parts)
+            return f"No class '{class_name}' found."
 
+    _index_fresh = False
     type_record = next((m for m in members if m["member_type"] == "type"), None)
     ns = type_record["namespace"] if type_record else members[0].get("namespace", "")
 
@@ -358,9 +394,11 @@ def get_stats() -> str:
 
     Shows file count, record counts by type, and namespace breakdown.
     """
+    global _index_fresh
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
+    _index_fresh = False
     stats = db.get_stats(_conn)
 
     parts = [
@@ -396,11 +434,13 @@ def reindex() -> str:
     Uses file modification times to detect changes. Fast on large codebases —
     only touches files that actually changed since the last index.
     """
+    global _index_fresh
     if _project_path is None:
         return "No project path configured. Start the server with --project <path>."
     if not _project_path.is_dir():
         return f"Project path not found: {_project_path}"
 
+    _index_fresh = True
     return _index_incremental(_project_path)
 
 
