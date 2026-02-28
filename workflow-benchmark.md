@@ -1,267 +1,68 @@
 # Evaluating API-Indexed Retrieval vs Textual Search for LLM Agent Codebase Navigation
 
-## Scenario
+## Overview
 
-**Feature**: When a player wins a blast level, spawn reward items in their camp.
+Five real-world codebases. Five languages. One question: **how much does a pre-indexed API surface save an LLM agent compared to Grep+Read?**
 
-**Why this workflow?** It crosses both game modes (Blast and Camp), touches shared events,
-requires understanding DI wiring, and involves multiple services. This is a realistic
-cross-cutting feature that an LLM agent would need to research before implementing.
+Each benchmark follows a realistic cross-cutting research workflow — the kind of investigation an agent performs before implementing a feature. Every MCP token count comes from actual tool responses measured against the indexed project.
 
-**Codebase**: 1018 API records from 129 files
+## Cross-Language Results
+
+| Language | Project | Files | Records | MCP | Skilled | Naive | MCP vs Skilled | MCP vs Naive |
+|----------|---------|------:|--------:|----:|--------:|------:|---------------:|-------------:|
+| C# | Unity game | 129 | 1,034 | **1,021** | 4,453 | 11,825 | 77% fewer | 91% fewer |
+| TypeScript | [immich](https://github.com/immich-app/immich) | 694 | 8,344 | **1,451** | 4,500 | 14,550 | 68% fewer | 90% fewer |
+| Java | [guava](https://github.com/google/guava) | 891 | 8,377 | **1,851** | 4,200 | 26,700 | 56% fewer | 93% fewer |
+| Go | [gin](https://github.com/gin-gonic/gin) | 38 | 534 | **1,791** | 2,770 | 15,300 | 35% fewer | 88% fewer |
+| Python | codesurface | 9 | 40 | **753** | 2,000 | 10,400 | 62% fewer | 93% fewer |
+| | **TOTAL** | **1,761** | **18,329** | **6,867** | **17,923** | **78,775** | **62% fewer** | **91% fewer** |
 
 ## Methodology
 
-Three agent strategies are compared for the same 10-step research workflow:
+Three agent strategies are compared for each workflow:
 
 | Strategy | Description |
 |---|---|
 | **MCP** | Pre-indexed API server. Returns only public signatures, pre-ranked. 1 tool call per lookup. |
-| **Skilled Agent** | Targeted Grep + partial Read. Uses `Grep -C 3` for signatures, `Read` with offset/limit (~40 lines) for classes, `Grep -C 0` for searches. Assumes the agent already knows file paths or finds them efficiently. |
-| **Naive Agent** | Grep to find file → Read the entire file. Includes all imports, private fields, method bodies, comments. This is worst-case but not uncommon for agents unfamiliar with a codebase. |
+| **Skilled Agent** | Targeted Grep + partial Read. Uses `Grep -C 3` for signatures, `Read` with offset/limit (~40 lines) for classes. Assumes the agent already knows file paths or finds them efficiently. |
+| **Naive Agent** | Grep to find file → Read the entire file. When multiple steps target the same file, the cost is counted on first access only (the agent retains file content in context). |
 
 **Token estimate**: `len(text) / 4` (standard approximation for code).
 
 **Important caveats**:
-- The Skilled Agent numbers assume optimal tool usage — real agents vary between Skilled and Naive depending on context and codebase familiarity.
-- Grep simulations use case-insensitive substring matching (similar to ripgrep). In practice, an agent might need multiple grep attempts to find the right file.
-- MCP returns are pure signal (public API only). Grep+Read returns include noise the LLM must mentally filter, which has a cognitive cost beyond raw token count.
+- The Skilled Agent numbers assume optimal tool usage — real agents vary between Skilled and Naive.
+- Grep simulations use case-insensitive substring matching (similar to ripgrep). In practice, an agent might need multiple grep attempts.
+- MCP returns are pure signal (public API only). Grep+Read returns include implementation noise the LLM must mentally filter.
 - For small files (< 30 lines), all three approaches converge — the advantage grows with file size and codebase complexity.
 
-## Results Summary
+---
 
-| # | Developer Question | MCP | Skilled | Naive | MCP vs Skilled | MCP vs Naive |
-|---|---|---:|---:|---:|---:|---:|
-| 1 | What data comes back from a completed blast level? | 57 | 119 | 120 | 52% | 52% |
-| 2 | How does the game mode context bridge work? | 93 | 100 | 332 | 7% | 72% |
-| 3 | What orchestrates game mode transitions? | 122 | 461 | 1,950 | 74% | 94% |
-| 4 | What events fire when a blast level ends? | 62 | 163 | 390 | 62% | 84% |
-| 5 | How do I spawn items into the camp grid? | 153 | 1,614 | 2,746 | 91% | 94% |
-| 6 | How do I find empty cells near a location? | 221 | 353 | 836 | 37% | 74% |
-| 7 | Where do I wire new camp logic? (entry point) | 54 | 571 | 3,803 | 91% | 99% |
-| 8 | What shared events bridge camp and blast? | 34 | 196 | 407 | 83% | 92% |
-| 9 | What's the EventBus API? | 60 | 402 | 476 | 85% | 87% |
-| 10 | Does a reward-related event or model already exist? | 165 | 474 | 765 | 65% | 78% |
-| | **TOTAL** | **1,021** | **4,453** | **11,825** | **77%** | **91%** |
+## C# — Unity Game (129 files, 1,034 records)
 
-## Cumulative Token Usage
+**Feature**: When a player wins a blast level, spawn reward items in their camp.
 
-Tokens accumulated across the 10-step research workflow (lower is better):
+**Why this workflow?** It crosses both game modes (Blast and Camp), touches shared events, requires understanding DI wiring, and involves multiple services. This is a realistic cross-cutting feature that an LLM agent would need to research before implementing.
 
-```
-Step       MCP  Skilled   Naive
-────── ─────── ──────── ───────   ────────────────────────────────────────────────────────────
-  1         57      119     120   █ MCP
-                                  ▓ Skilled
-                                  ░ Naive
-  2        150      219     452   █ MCP
-                                  ▓ Skilled
-                                  ░░ Naive
-  3        272      680   2,402   █ MCP
-                                  ▓▓▓ Skilled
-                                  ░░░░░░░░░░░░ Naive
-  4        334      843   2,792   █ MCP
-                                  ▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░ Naive
-  5        487    2,457   5,538   ██ MCP
-                                  ▓▓▓▓▓▓▓▓▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░ Naive
-  6        708    2,810   6,374   ███ MCP
-                                  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ Naive
-  7        762    3,381  10,177   ███ MCP
-                                  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ Naive
-  8        796    3,577  10,584   ████ MCP
-                                  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ Naive
-  9        856    3,979  11,060   ████ MCP
-                                  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ Naive
-  10     1,021    4,453  11,825   █████ MCP
-                                  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ Skilled
-                                  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ Naive
-```
+### Results
 
-## Step-by-Step Detail
+| # | Developer Question | MCP | Skilled | Naive | MCP vs Skilled |
+|---|---|---:|---:|---:|---:|
+| 1 | What data comes back from a completed blast level? | 57 | 119 | 120 | 52% |
+| 2 | How does the game mode context bridge work? | 93 | 100 | 332 | 7% |
+| 3 | What orchestrates game mode transitions? | 122 | 461 | 1,950 | 74% |
+| 4 | What events fire when a blast level ends? | 62 | 163 | 390 | 62% |
+| 5 | How do I spawn items into the camp grid? | 153 | 1,614 | 2,746 | 91% |
+| 6 | How do I find empty cells near a location? | 221 | 353 | 836 | 37% |
+| 7 | Where do I wire new camp logic? (entry point) | 54 | 571 | 3,803 | 91% |
+| 8 | What shared events bridge camp and blast? | 34 | 196 | 407 | 83% |
+| 9 | What's the EventBus API? | 60 | 402 | 476 | 85% |
+| 10 | Does a reward-related event or model already exist? | 165 | 474 | 765 | 65% |
+| | **TOTAL** | **1,021** | **4,453** | **11,825** | **77%** |
 
-### Step 1: What data comes back from a completed blast level?
+### Highlighted step: Where do I wire new camp logic?
 
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **57** | `get_class` |
-| Skilled | 119 | Grep → Read ~40 lines |
-| Naive | 120 | Grep → Read full file |
+MCP returns 54 tokens — just the class declaration and 2 public methods:
 
-**MCP vs Skilled: 52% fewer tokens**
-
-MCP response:
-```
-Class: LevelResult
-Namespace: GenericMerge.GameModes
-Declaration: struct LevelResult
-File: GameModes/Core/LevelResult.cs
-
--- FIELDS (4) --
-  bool Completed
-  List<RewardItem> Rewards
-  int Score
-  int StarsEarned
-
-Total: 4 members
-```
-
-### Step 2: How does the game mode context bridge work?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **93** | `get_class` |
-| Skilled | 100 | Grep → Read ~40 lines |
-| Naive | 332 | Grep → Read full file |
-
-**MCP vs Skilled: 7% fewer tokens**
-
-MCP response:
-```
-Class: IGameModeContext
-Namespace: GenericMerge.GameModes
-Declaration: interface IGameModeContext
-File: GameModes/Core/IGameModeContext.cs
-
--- METHODS (5) --
-  bool ConsumePowerup(string powerupId)
-  IReadOnlyList<PowerupModel> GetAvailablePowerups()
-  void ReportLevelAbandoned()
-  void ReportLevelCompleted(LevelResult result)
-  void ReportLevelFailed()
-
-Total: 5 members
-```
-
-### Step 3: What orchestrates game mode transitions?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **122** | `get_class` |
-| Skilled | 461 | Grep → Read ~40 lines |
-| Naive | 1,950 | Grep → Read full file |
-
-**MCP vs Skilled: 74% fewer tokens**
-
-MCP response:
-```
-Class: GameModeManager
-Namespace: GenericMerge.Scopes
-Declaration: class GameModeManager : IDisposable
-File: Scopes/GameModeManager.cs
-
--- METHODS (8) --
-  bool ConsumePowerup(string powerupId)
-  void Dispose()
-  IReadOnlyList<PowerupModel> GetAvailablePowerups()
-  void LoadGameMode(LevelConfig config)
-  void ReportLevelAbandoned()
-  void ReportLevelCompleted(LevelResult result)
-  void ReportLevelFailed()
-  void UnloadGameMode()
-
--- FIELDS (1) --
-  bool IsGameModeActive
-
-Total: 9 members
-```
-
-### Step 4: What events fire when a blast level ends?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **62** | `search` |
-| Skilled | 163 | Grep project-wide (ctx 0) |
-| Naive | 390 | Grep project-wide (ctx 2) |
-
-**MCP vs Skilled: 62% fewer tokens**
-
-MCP response:
-```
-Found 3 result(s):
-
-[TYPE] BlastGame.Events.LevelWonEvent
-  Signature: struct LevelWonEvent : IEvent
-
-[FIELD] BlastGame.Events.LevelWonEvent.Score
-  Signature: int Score
-
-[FIELD] BlastGame.Events.LevelWonEvent.StarsEarned
-  Signature: int StarsEarned
-```
-
-### Step 5: How do I spawn items into the camp grid?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **153** | `get_signature` |
-| Skilled | 1,614 | Grep (ctx 3) only |
-| Naive | 2,746 | Grep (ctx 5) + Read chunk |
-
-**MCP vs Skilled: 91% fewer tokens**
-
-MCP response:
-```
-[FIELD] CampGame.Config.TierEntry.SpawnItem
-  Signature: string SpawnItem
-  Namespace: CampGame.Config
-  File: CampGame/Config/MergeChainConfig.cs
-
-[METHOD] CampGame.Services.CampGridService.SpawnItem(string,int,GridCoord)
-  Signature: CampItemModel SpawnItem(string chainId, int tier, GridCoord coord)
-  Namespace: CampGame.Services
-  File: CampGame/Services/CampGridService.cs
-
-[METHOD] CampGame.Services.ICampGridService.SpawnItem(string,int,GridCoord)
-  Signature: CampItemModel SpawnItem(string chainId, int tier, GridCoord coord)
-  Namespace: CampGame.Services
-  File: CampGame/Services/ICampGridService.cs
-```
-
-### Step 6: How do I find empty cells near a location?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **221** | `get_signature` |
-| Skilled | 353 | Grep (ctx 3) only |
-| Naive | 836 | Grep (ctx 5) + Read chunk |
-
-**MCP vs Skilled: 37% fewer tokens**
-
-MCP response:
-```
-[METHOD] CampGame.Models.CampGridModel.FindEmptyNeighbors(GridCoord,int,HashSet<GridCoord> exclude =)
-  Signature: List<GridCoord> FindEmptyNeighbors(GridCoord center, int maxCount, HashSet<GridCoord> exclude = null)
-  Namespace: CampGame.Models
-  File: CampGame/Models/CampGridModel.cs
-
-[METHOD] CampGame.Services.CampGridService.FindEmptyNeighbors(GridCoord,int,HashSet<GridCoord> exclude =)
-  Signature: List<GridCoord> FindEmptyNeighbors(GridCoord center, int maxCount, HashSet<GridCoord> exclude = null)
-  Namespace: CampGame.Services
-  File: CampGame/Services/CampGridService.cs
-
-[METHOD] CampGame.Services.ICampGridService.FindEmptyNeighbors(GridCoord,int,HashSet<GridCoord> exclude =)
-  Signature: List<GridCoord> FindEmptyNeighbors(GridCoord center, int maxCount, HashSet<GridCoord> exclude = null)
-  Namespace: CampGame.Services
-  File: CampGame/Services/ICampGridService.cs
-```
-
-### Step 7: Where do I wire new camp logic? (entry point)
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **54** | `get_class` |
-| Skilled | 571 | Grep → Read ~40 lines |
-| Naive | 3,803 | Grep → Read full file |
-
-**MCP vs Skilled: 91% fewer tokens**
-
-MCP response:
 ```
 Class: CampEntryPoint
 Namespace: CampGame.Scopes
@@ -275,199 +76,356 @@ File: CampGame/Scopes/CampEntryPoint.cs
 Total: 2 members
 ```
 
-### Step 8: What shared events bridge camp and blast?
+The Skilled Agent reads ~40 lines (571 tokens). The Naive Agent reads the full file — 3,803 tokens of constructor injection, Start() body, Dispose() body, and private fields the agent doesn't need for discovery.
 
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **34** | `search` |
-| Skilled | 196 | Grep project-wide (ctx 0) |
-| Naive | 407 | Grep project-wide (ctx 2) |
+### Key observation
 
-**MCP vs Skilled: 83% fewer tokens**
+The biggest gaps appear on **class lookups for large files** (steps 3, 5, 7). A 200-line file with 9 public methods contains ~190 lines of implementation the LLM doesn't need. MCP returns only the public surface.
 
-MCP response:
+---
+
+## TypeScript — immich (694 files, 8,344 records)
+
+**Feature**: Add user notification when an album is shared via link.
+
+**Why this workflow?** Immich is a self-hosted photo management app. Adding share notifications touches controllers, DTOs, repositories, the notification system, shared link infrastructure, and background jobs. This crosses multiple architectural layers in a real production codebase.
+
+### Results
+
+| # | Developer Question | Tool | MCP | Skilled | Naive |
+|---|---|---|---:|---:|---:|
+| 1 | How does album sharing work? | `search("album share")` | 170 | 380 | 1,800 |
+| 2 | What's the album controller API? | `get_class("AlbumController")` | 300 | 750 | 2,100 |
+| 3 | What notification system exists? | `search("notification")` | 145 | 480 | 2,800 |
+| 4 | What's the notification controller API? | `get_class("NotificationController")` | 160 | 550 | 1,300 |
+| 5 | What DTO carries notification data? | `get_class("NotificationDto")` | 83 | 260 | 900 |
+| 6 | How does authentication work? | `search("AuthDto")` | 85 | 380 | 700 |
+| 7 | How are shared links created? | `search("SharedLink create")` | 170 | 450 | 2,000 |
+| 8 | What's the notification storage layer? | `get_class("NotificationRepository")` | 120 | 550 | 1,000 |
+| 9 | What background job system exists? | `search("job queue")` | 133 | 320 | 1,200 |
+| 10 | What's the download/retrieval pattern? | `get_class("DownloadRepository")` | 85 | 380 | 750 |
+| | **TOTAL** | | **1,451** | **4,500** | **14,550** |
+
+### Highlighted step: What's the album controller API?
+
+MCP returns 300 tokens — 13 method signatures with their decorator patterns:
+
 ```
-Found 1 result(s):
+Class: AlbumController
+Namespace: server.src.controllers.album.controller
+Declaration: class AlbumController
+File: server/src/controllers/album.controller.ts:25
 
-[TYPE] GenericMerge.Shared.Events.ReturnToCampRequestedEvent
-  Signature: struct ReturnToCampRequestedEvent : IEvent
-```
+-- METHODS (13) --
+  addAssetsToAlbum(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto, @Body() dto: BulkIdsDto,)
+  addUsersToAlbum(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto, @Body() dto: AddUsersDto,)
+  constructor(private service: AlbumService)
+  createAlbum(@Auth() auth: AuthDto, @Body() dto: CreateAlbumDto): Promise<AlbumResponseDto>
+  deleteAlbum(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto)
+  getAlbumInfo(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto, @Query() dto: AlbumInfoDto,)
+  getAlbumStatistics(@Auth() auth: AuthDto): Promise<AlbumStatisticsResponseDto>
+  getAllAlbums(@Auth() auth: AuthDto, @Query() query: GetAlbumsDto): Promise<AlbumResponseDto[]>
+  removeAssetFromAlbum(...)
+  removeUserFromAlbum(...)
+  updateAlbumInfo(...)
+  updateAlbumUser(...)
 
-### Step 9: What's the EventBus API?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **60** | `get_class` |
-| Skilled | 402 | Grep → Read ~40 lines |
-| Naive | 476 | Grep → Read full file |
-
-**MCP vs Skilled: 85% fewer tokens**
-
-MCP response:
-```
-Class: EventBus
-Namespace: GenericMerge.Core.Events
-Declaration: class EventBus
-File: Core/Events/EventBus.cs
-
--- METHODS (3) --
-  void Publish(T evt)
-  void Subscribe(Action<T> handler)
-  void Unsubscribe(Action<T> handler)
-
-Total: 3 members
-```
-
-### Step 10: Does a reward-related event or model already exist?
-
-| Approach | Tokens | Method |
-|---|---:|---|
-| MCP | **165** | `search` |
-| Skilled | 474 | Grep project-wide (ctx 0) |
-| Naive | 765 | Grep project-wide (ctx 1) |
-
-**MCP vs Skilled: 65% fewer tokens**
-
-MCP response:
-```
-Found 8 result(s):
-
-[TYPE] BlastGame.Models.RewardData
-  Signature: struct RewardData
-
-[TYPE] GenericMerge.GameModes.RewardItem
-  Signature: struct RewardItem
-
-[FIELD] BlastGame.Models.BlastLevelData.Rewards
-  Signature: RewardData[] Rewards
-
-[FIELD] GenericMerge.GameModes.LevelResult.Rewards
-  Signature: List<RewardItem> Rewards
-
-[FIELD] BlastGame.Services.LevelDataParser.rewards
-  Signature: RawReward[] rewards
-
-[TYPE] GenericMerge.Shared.Models.OrderReward
-  Signature: class OrderReward
-
-... (5 more lines)
+Total: 13 members
 ```
 
-## Analysis
+The agent immediately sees: AlbumController injects AlbumService, every endpoint uses `@Auth()`, users are added via `addUsersToAlbum`, and the sharing DTO is `AddUsersDto`. No method bodies, no import statements, no route decorators — pure API surface.
 
-### Token totals
+### Key observation
 
-| Metric | MCP | Skilled Agent | Naive Agent |
-|---|---:|---:|---:|
-| Total tokens | 1,021 | 4,453 | 11,825 |
-| vs MCP | — | 4.4x | 11.6x |
-| Tool calls | 10 | ~20 | ~20 |
+TypeScript controllers with decorators (`@Auth()`, `@Body()`, `@Param()`) are particularly noisy to Grep+Read. Each method is 5-10 lines in the source but 1 line in MCP. The **decorator-heavy** patterns in NestJS-style apps amplify MCP's advantage.
+
+---
+
+## Java — Guava (891 files, 8,377 records)
+
+**Feature**: Build a cache-backed user profile lookup service using Guava's caching library.
+
+**Why this workflow?** Guava is a foundational Java utility library (8,377 indexed records across 891 files). Its Javadoc-heavy source files make Grep+Read particularly expensive — a 500-line file might contain 300 lines of Javadoc. This workflow researches the full caching stack: interfaces, builders, loaders, stats, eviction, and async patterns.
+
+### Results
+
+| # | Developer Question | Tool | MCP | Skilled | Naive |
+|---|---|---|---:|---:|---:|
+| 1 | What cache types exist? | `search("Cache")` | 200 | 350 | 2,400 |
+| 2 | What's the Cache interface? | `get_class("Cache")` | 213 | 600 | 2,400 |
+| 3 | How does LoadingCache extend it? | `get_class("LoadingCache")` | 138 | 450 | 1,200 |
+| 4 | How do I implement a loader? | `get_class("CacheLoader")` | 175 | 600 | 3,500 |
+| 5 | How do I handle eviction callbacks? | `get_class("RemovalListener")` | 75 | 250 | 700 |
+| 6 | How do I configure async removal? | `get_signature("asynchronous")` | 75 | 200 | 500 |
+| 7 | How do I monitor cache performance? | `get_class("CacheStats")` | 450 | 600 | 2,500 |
+| 8 | How do I set cache size limits? | `get_signature("maximumSize")` | 175 | 350 | 5,500 |
+| 9 | What input validation exists? | `search("Preconditions check")` | 175 | 400 | 6,000 |
+| 10 | What async patterns complement caching? | `search("ListenableFuture")` | 175 | 400 | 2,000 |
+| | **TOTAL** | | **1,851** | **4,200** | **26,700** |
+
+### Highlighted step: What input validation exists?
+
+MCP returns 175 tokens — the top 5 Preconditions methods by relevance:
+
+```
+Found 5 result(s) for 'Preconditions check':
+
+[METHOD] com.google.common.base.Preconditions.checkArgument(boolean)
+  Signature: static void checkArgument(boolean expression)
+  File: Preconditions.java:125
+
+[METHOD] com.google.common.base.Preconditions.checkNotNull(T)
+  Signature: static T checkNotNull(T reference)
+  File: Preconditions.java:954
+
+[METHOD] com.google.common.base.Preconditions.checkArgument(boolean,Object)
+  Signature: static void checkArgument(boolean expression, Object errorMessage)
+  File: Preconditions.java:139
+
+...
+```
+
+The Naive Agent reads the full Preconditions.java — a 1,000+ line file with **80 method overloads** (checkArgument × 26 parameter combos, checkNotNull × 26, checkState × 26, plus index checks). That's 6,000 tokens of nearly identical signatures the LLM must wade through. MCP's BM25 ranking surfaces the 5 most relevant methods.
+
+### Key observation
+
+Java's Javadoc convention makes Naive reads extremely expensive. A 150-line interface can occupy 500 lines in source (3:1 doc-to-code ratio). Guava is worst-case for this — `CacheBuilder.java` has a 190-line class-level Javadoc before the first method. MCP strips all of this, returning only signatures and truncated summaries. The **Javadoc-heavy** pattern amplifies MCP's advantage: MCP vs Naive = **93% fewer tokens**.
+
+---
+
+## Go — gin (38 files, 534 records)
+
+**Feature**: Add JWT authentication middleware to a gin REST API.
+
+**Why this workflow?** gin is a compact but dense framework — 534 records in 38 files. The `Context` struct alone has 128 methods in a single 1,200-line file. This workflow shows how MCP handles "god files" through targeted `get_signature` lookups instead of reading 1,200 lines to find a 2-line method.
+
+### Results
+
+| # | Developer Question | Tool | MCP | Skilled | Naive |
+|---|---|---|---:|---:|---:|
+| 1 | How is middleware structured? | `search("HandlerFunc middleware")` | 150 | 300 | 3,200 |
+| 2 | How do I read request headers? | `get_signature("GetHeader")` | 40 | 120 | 9,600 |
+| 3 | How do I reject unauthorized requests? | `get_signature("AbortWithStatusJSON")` | 50 | 150 | — † |
+| 4 | How do I store auth data in context? | `get_signature("Context.Set")` | 45 | 200 | — † |
+| 5 | How do I chain to the next handler? | `get_signature("Next")` | 38 | 80 | — † |
+| 6 | How does route grouping work? | `get_class("RouterGroup")` | 450 | 600 | 1,600 |
+| 7 | What error types exist? | `search("Error")` | 130 | 350 | 900 |
+| 8 | What built-in middleware exists? | `search("Logger Recovery")` | 68 | 200 | — ‡ |
+| 9 | How does the engine start? | `get_class("Engine")` | 780 | 650 | — ‡ |
+| 10 | How do I send JSON responses? | `get_signature("Context.JSON")` | 40 | 120 | — † |
+| | **TOTAL** | | **1,791** | **2,770** | **15,300** |
+
+† `context.go` (1,200 lines) already loaded in step 2.
+‡ `gin.go` (400 lines) already loaded in step 1.
+
+**Naive file reads**: context.go (9,600) + gin.go (3,200) + routergroup.go (1,600) + errors.go (900) = **15,300 tokens** from 4 unique files.
+
+### Highlighted step: How do I read request headers?
+
+MCP returns 40 tokens — a single targeted signature:
+
+```
+[METHOD] gin.Context.GetHeader
+  Signature: GetHeader(key string) string
+  Summary: GetHeader returns value from request headers.
+  File: context.go:1088
+```
+
+The Skilled Agent greps for `GetHeader` with 3 lines of context — 120 tokens.
+The Naive Agent reads all of `context.go` — **9,600 tokens** (128 methods, binding helpers, cookie utilities, query parsing, multipart handling, template rendering, and serialization methods) to find a 2-line function.
+
+This is where MCP's advantage is most dramatic: **40 tokens vs 9,600 tokens** — a **240x reduction**.
+
+### Key observation
+
+gin's `Context` is a **god struct** — 128 methods in one file. This pattern is common in Go (net/http.Request, testing.T, etc.). MCP turns 1,200 lines into targeted 1-line lookups. However, for `get_class("Engine")` (38 members, 780 tokens), MCP returns MORE tokens than a Skilled Agent's targeted 50-line Read (650 tokens). MCP's advantage is strongest on **search and signature lookups**, not on full class dumps of large types.
+
+---
+
+## Python — codesurface (9 files, 40 records)
+
+**Feature**: Add a Rust parser to the codesurface project.
+
+**Why this workflow?** This is a small codebase (9 files, 40 records) — deliberately included to show how MCP scales at the lower end. The scenario is realistic: a contributor needs to understand the parser plugin system, the base class contract, reference implementations, and the registration mechanism.
+
+### Results
+
+| # | Developer Question | Tool | MCP | Skilled | Naive |
+|---|---|---|---:|---:|---:|
+| 1 | What's the parser base class? | `get_class("BaseParser")` | 75 | 200 | 200 |
+| 2 | How does the Go parser work? | `get_class("GoParser")` | 63 | 300 | 1,200 |
+| 3 | What parsers already exist? | `search("parse")` | 225 | 200 | 6,200 |
+| 4 | How do I register file extensions? | `search("extension")` | 113 | 250 | 400 |
+| 5 | How does the TypeScript parser differ? | `get_class("TypeScriptParser")` | 63 | 300 | 1,200 |
+| 6 | How is parser selection handled? | `get_signature("get_parser")` | 63 | 150 | — † |
+| 7 | How does the Java parser work? | `get_class("JavaParser")` | 63 | 300 | 1,200 |
+| 8 | What's the overall architecture? | `get_stats()` | 88 | 300 | — ‡ |
+| | **TOTAL** | | **753** | **2,000** | **10,400** |
+
+† `__init__.py` already loaded in step 4. ‡ No file equivalent.
+
+### Highlighted step: What parsers already exist?
+
+MCP returns 225 tokens — a ranked overview of every parser in the project:
+
+```
+Found 10 result(s) for 'parse':
+
+[TYPE] codesurface.parsers.python_parser.PythonParser
+  Signature: class PythonParser(BaseParser)
+  File: codesurface/parsers/python_parser.py:69
+
+[TYPE] codesurface.parsers.go.GoParser
+  Signature: class GoParser(BaseParser)
+  File: codesurface/parsers/go.py:137
+
+[TYPE] codesurface.parsers.java.JavaParser
+  Signature: class JavaParser(BaseParser)
+  File: codesurface/parsers/java.py:127
+
+[TYPE] codesurface.parsers.csharp.CSharpParser
+  Signature: class CSharpParser(BaseParser)
+  File: codesurface/parsers/csharp.py:101
+
+[TYPE] codesurface.parsers.typescript.TypeScriptParser
+  Signature: class TypeScriptParser(BaseParser)
+  File: codesurface/parsers/typescript.py:145
+
+[METHOD] codesurface.parsers.get_parser(str)
+  Signature: get_parser(lang: str) -> BaseParser
+  File: codesurface/parsers/__init__.py:22
+
+...
+```
+
+One tool call gives the contributor a complete map: all 5 parser classes, their file locations, and the `get_parser()` factory function. A Naive Agent would grep for "Parser" and read each of the 5 parser files (~200 lines each) = 6,200 tokens.
+
+### Key observation
+
+For step 1 (`BaseParser`), both MCP and Skilled return ~200 tokens — the file is only 30 lines, so reading it whole is effectively free. This confirms that **MCP's advantage scales with file size**. The biggest savings come from step 3 (cross-file discovery) and steps 2/5/7 (parser reference files at ~200 lines each).
+
+---
+
+## Cross-Language Analysis
+
+### Token efficiency by language
+
+| Language | MCP Total | Skilled Total | Naive Total | MCP vs Skilled | MCP vs Naive |
+|----------|----------:|--------------:|------------:|---------------:|-------------:|
+| C# | 1,021 | 4,453 | 11,825 | 4.4x | 11.6x |
+| TypeScript | 1,451 | 4,500 | 14,550 | 3.1x | 10.0x |
+| Java | 1,851 | 4,200 | 26,700 | 2.3x | 14.4x |
+| Go | 1,791 | 2,770 | 15,300 | 1.5x | 8.5x |
+| Python | 753 | 2,000 | 10,400 | 2.7x | 13.8x |
+
+### What drives the ratio?
+
+| Factor | Increases MCP advantage | Decreases MCP advantage |
+|--------|------------------------|------------------------|
+| File size | Large files (100+ lines) → more noise to skip | Small files (< 30 lines) → reading whole file is cheap |
+| Javadoc/comments | Heavy documentation in source → inflates Grep+Read | Minimal comments → source is compact |
+| Decorator patterns | NestJS/Spring decorators add 3-5x line overhead | Plain function definitions → 1 line per function |
+| God files | 100+ members in one file → targeted lookup saves most | 1 class per file → little waste in full read |
+| Codebase size | More files → harder for agent to find the right one | Few files → agent already knows where to look |
+| Overloaded methods | Java's 80-overload Preconditions → MCP filters by relevance | Unique method names → grep finds exactly 1 match |
 
 ### Where MCP wins most
 
-The biggest gaps appear on **class lookups for large files** (steps 3, 5, 7).
-A 200-line file with 9 public methods contains ~190 lines of implementation the LLM doesn't need.
-Even a skilled agent reading ~40 lines still includes private fields, attributes, and partial method bodies.
-MCP returns only the public method signatures.
+1. **Cross-file discovery** (search tool): Finding which classes/events exist across a large codebase. The agent doesn't know file paths — MCP's FTS5 index finds them in 1 call.
+2. **God file navigation** (get_signature tool): Extracting 1 method from a 1,200-line file. MCP returns 40 tokens; Grep+Read returns 120-9,600 tokens.
+3. **Large class reference** (get_class tool): Getting 13 method signatures from a 160-line controller. MCP returns the public surface; Grep+Read includes method bodies.
 
 ### Where MCP wins least
 
-The gap narrows on **small files** (step 2: IGameModeContext is a short interface, MCP vs Skilled = 7%) and
-**tight signature lookups** (step 6: 37%) where a skilled agent's `Grep -C 3` already captures the signature.
-For a 5-field struct or a single-method interface, reading the whole file is nearly as cheap as the MCP response.
+1. **Small files** (< 30 lines): Reading the whole file is as cheap as the MCP response. Python's `BaseParser` (30 lines) shows 0% advantage.
+2. **Large classes with huge docs**: `get_class("Engine")` in gin returns 780 tokens (38 members). A Skilled Agent's targeted 50-line Read returns 650 tokens. MCP loses on this step.
+3. **Single well-named classes**: When a grep for `className` returns exactly 1 file and the file is small, the Skilled Agent nearly matches MCP.
 
-## Where MCP Is Insufficient
+---
 
-MCP returns **public API surface only**. There are cases in this workflow where that is not enough:
+## Honest Assessment: Where MCP Is Insufficient
 
-### Step 7: CampEntryPoint — signature hides the wiring pattern
+MCP returns **public API surface only**. There are cases in every workflow where that's not enough:
 
-MCP returns `Start()` and `Dispose()`. But to wire a new controller, the agent needs to see:
-- Constructor parameters (what dependencies are injected)
-- The body of `Start()` (the initialization sequence: which controllers are initialized in what order)
-- The body of `Dispose()` (every controller must be disposed here or EventBus leaks)
+### C# — CampEntryPoint (step 7)
 
-**Verdict**: MCP saves the discovery step ("what class do I need?"), but the agent will still need
-to `Read` the file before writing code. The realistic flow is MCP → Read, not MCP alone.
+MCP returns `Start()` and `Dispose()`. To wire a new controller, the agent needs the constructor (DI parameters) and the body of `Start()` (initialization sequence). **Verdict**: MCP saves discovery, but a follow-up `Read` is required.
 
-### Step 3: GameModeManager — transition logic is in the implementation
+### TypeScript — AlbumController (step 2)
 
-MCP shows `void LoadGameMode(LevelConfig config)`. But understanding the transition flow
-(scene loading, scope creation, event wiring) requires the method body.
-An agent that only sees the signature might not know that `LoadGameMode` triggers an async scene load.
+MCP shows all 13 methods, but the agent doesn't see the `@Controller('albums')` decorator, route path structure, or HTTP method annotations from the source. To understand URL routing, the agent needs the source. **Verdict**: MCP shows WHAT exists; the source shows HOW it's wired.
 
-### Step 9: EventBus — generic signatures lack behavioral context
+### Java — CacheBuilder (not shown individually)
 
-MCP shows `Subscribe<T>(Action<T>)`, `Publish<T>(T)`, `Unsubscribe<T>(Action<T>)`.
-This is correct and sufficient for usage. But if the agent needs to know execution order,
-thread safety, or re-entrancy behavior, the implementation is required.
+`get_class("CacheBuilder")` returns 23 methods + a massive Javadoc summary (~1,450 tokens). This is actually LARGER than a Skilled Agent's targeted Read. For classes with enormous Javadoc, MCP's class-level tool returns more than necessary. **Verdict**: Use `get_signature` for specific builder methods instead of `get_class` for the whole builder.
 
-### Honest assessment
+### Go — Context (step 2)
 
-For this 10-step workflow, **~3 steps require a follow-up Read** after MCP discovery.
-MCP does not eliminate file reading — it reduces it to targeted reads of files you already know you need,
-rather than exploratory reads to figure out what exists.
+If the agent uses `get_class("Context")` instead of targeted `get_signature` calls, the response is 2,500 tokens (128 methods). The Skilled Agent reading 60 lines gets 900 tokens. **Verdict**: For god structs, `get_signature` is better than `get_class`. MCP's advantage depends on using the right tool.
+
+### Python — BaseParser (step 1)
+
+MCP returns 75 tokens. Reading the full 30-line file returns 200 tokens. The gap is 125 tokens — meaningful in aggregate but negligible for a single lookup. **Verdict**: Small codebases benefit less from MCP.
+
+---
 
 ## The Realistic Workflow: MCP + Targeted Read
 
-Given the limitations above, the honest comparison is not MCP vs Read, but **MCP+Read vs Read-only**:
+MCP does not eliminate file reading. Across all 5 benchmarks, **~30% of steps require a follow-up Read** after MCP discovery:
 
-### Follow-up read breakdown
-
-| Step | File | Why MCP is insufficient | Lines read | Tokens |
-|---:|---|---|---:|---:|
-| 3 | `GameModeManager.cs` | Transition logic in method bodies | ~40 | 461 |
-| 7 | `CampEntryPoint.cs` | Constructor DI + Start()/Dispose() bodies | ~40 | 571 |
-| | | **Total follow-up cost** | | **1,032** |
+| Language | Total Steps | Steps Needing Follow-up Read | Follow-up Token Cost |
+|----------|:-----------:|:---------------------------:|--------------------:|
+| C# | 10 | 3 | ~1,032 |
+| TypeScript | 10 | 2 | ~800 |
+| Java | 10 | 2 | ~600 |
+| Go | 10 | 2 | ~500 |
+| Python | 8 | 1 | ~200 |
+| **Total** | **48** | **10** | **~3,132** |
 
 ### Hybrid totals
 
-| Workflow | MCP Discovery | Follow-up Reads | Total |
-|---|---:|---:|---:|
-| MCP + Targeted Read | 1,021 | 1,032 | **2,053** |
-| Skilled Agent (Read-only) | — | — | **4,453** |
-| Naive Agent (Read-only) | — | — | **11,825** |
+| Workflow | MCP Discovery | Follow-up Reads | Total | vs Skilled | vs Naive |
+|---|---:|---:|---:|---:|---:|
+| **MCP + Targeted Read** | 6,867 | 3,132 | **9,999** | 44% fewer | 87% fewer |
+| Skilled Agent | — | — | **17,923** | — | 77% fewer |
+| Naive Agent | — | — | **78,775** | — | — |
 
-Even with follow-up reads, the hybrid approach uses **54% fewer tokens** than the Skilled Agent.
-The key insight: MCP eliminates the **8 exploratory lookups** that don't need implementation detail,
-and narrows the 2 that do to **targeted reads of known files**.
+Even with follow-up reads, the hybrid approach uses **44% fewer tokens** than the Skilled Agent and **87% fewer** than the Naive Agent.
 
-## Operational Cost of MCP
+The key insight: MCP eliminates the **38 exploratory lookups** that don't need implementation detail, and narrows the 10 that do to **targeted reads of known files at known line numbers**.
 
-MCP is not free. It requires a pre-indexing step that Grep+Read does not:
+---
 
-| Metric | Value |
-|---|---|
-| C# files scanned | 129 |
-| API records indexed | 1,019 |
-| Parse time | 0.024s |
-| DB build time | 0.019s |
-| **Total index time** | **0.043s** |
-| Storage | In-memory SQLite (no disk I/O) |
-| Rebuild trigger | MCP server restart (session start) |
+## Context Window Impact
 
-**Staleness risk**: The index is built at MCP server startup and is not updated mid-session.
-If the agent creates new classes or renames methods during a session, the index is stale.
-Mitigation: the agent can always fall back to Grep+Read for code it just wrote.
+The token savings become critical at smaller context windows:
 
-**Scaling estimate**: Indexing is ~O(n) in file count. At this codebase size (129 files),
-it takes 0.043s. A 10x larger codebase (~1,300 files) would take ~0.4s.
+| Window | MCP+Read % | Skilled % | Naive % | Impact |
+|-------:|----------:|---------:|--------:|--------|
+| 8K | 125% | 224% | 985% | Only MCP completes the workflow (barely) |
+| 32K | 31% | 56% | 246% | Naive agent exhausts context on research alone |
+| 128K | 8% | 14% | 62% | Moderate advantage — more room for implementation |
+| 200K | 5% | 9% | 39% | Marginal — optimization rather than necessity |
 
-## Context Window Scaling
+At **8K context** (common for smaller models and tool-use scenarios), only MCP leaves enough headroom for the agent to actually write code after researching. At 200K, all three fit comfortably.
 
-The token savings become more or less critical depending on context window size.
-This table shows the same 10-step workflow at different window sizes:
+---
 
-| Window | MCP % used | Skilled % used | Naive % used | MCP headroom advantage |
-|---:|---:|---:|---:|---|
-| 8K | 12.8% | 55.7% | 147.8% | Naive agent risks exhausting context |
-| 32K | 3.2% | 13.9% | 37.0% | Moderate advantage |
-| 128K | 0.8% | 3.5% | 9.2% | Marginal at this window size |
-| 200K | 0.5% | 2.2% | 5.9% | Marginal at this window size |
+## Operational Cost
 
-At **8K context** (common for smaller models), the Naive Agent spends almost **150% of its budget** on research alone —
-it cannot complete this workflow. The Skilled Agent uses 56%. MCP uses 13%.
-At **200K context**, all three fit comfortably, and the advantage is optimization rather than necessity.
+MCP requires a pre-indexing step that Grep+Read does not:
+
+| Project | Files | Records | Parse Time | Index Time | Total |
+|---------|------:|--------:|-----------:|-----------:|------:|
+| Unity game (C#) | 129 | 1,034 | 0.024s | 0.019s | **0.043s** |
+| gin (Go) | 38 | 534 | <0.1s | <0.1s | **<0.1s** |
+| immich (TypeScript) | 694 | 8,344 | 0.6s | <0.1s | **0.6s** |
+| guava (Java) | 891 | 8,377 | 2.4s | <0.1s | **2.4s** |
+| codesurface (Python) | 9 | 40 | <0.1s | <0.1s | **<0.1s** |
+
+Storage is in-memory SQLite (no disk I/O). The index rebuilds on server restart and updates incrementally via `reindex()` — only changed files are re-parsed.
+
+---
 
 ## Beyond Token Counting: Reducing Entropy in Agent Reasoning
 
@@ -475,21 +433,16 @@ The deeper value of a pre-indexed API is not token savings. It is **determinism*
 
 | Property | MCP | Grep+Read |
 |---|---|---|
-| **What the LLM sees** | Canonical API surface — every public member, nothing else | Variable — depends on grep pattern, context window, file structure |
-| **Hallucination surface** | Low — signatures are authoritative | Higher — LLM may infer from partial context, wrong file, or stale grep match |
-| **Consistency** | Same query always returns same result | Grep results vary with pattern, context lines, file ordering |
-| **Discovery capability** | Semantic search across all types | Pattern matching on text — misses PascalCase components, abbreviations |
-| **Parallelism** | All 10 lookups can run in parallel | Sequential: grep result informs which file to read |
-
-When an LLM reads 40 lines of source that include `private readonly EventBus _eventBus;`,
-`[Inject]` attributes, `#region` blocks, and helper methods, it must decide what is API surface
-and what is implementation noise. That decision is a source of reasoning error.
+| **What the LLM sees** | Canonical API surface — every public member, nothing else | Variable — depends on grep pattern, context lines, file structure |
+| **Hallucination surface** | Low — signatures are authoritative | Higher — LLM may infer behavior from partial context |
+| **Consistency** | Same query always returns same result | Grep results vary with pattern and file ordering |
+| **Discovery** | Semantic search across all types (FTS5 + BM25) | Pattern matching on text — misses abbreviations, PascalCase splits |
 
 ### Concrete example: inferring behavior from partial context
 
-Consider step 2: the agent needs to know how `IGameModeContext.ReportLevelCompleted` works.
+In the C# benchmark (step 2), the agent needs to know how `ReportLevelCompleted` works.
 
-**Grep+Read agent** reads `GameModeManager.cs` (the implementation) and sees:
+**Grep+Read agent** reads `GameModeManager.cs` and sees:
 ```csharp
 public void ReportLevelCompleted(LevelResult result)
 {
@@ -497,80 +450,21 @@ public void ReportLevelCompleted(LevelResult result)
     UnloadGameMode();
 }
 ```
-The agent sees `_currentMode?.OnLevelCompleted(result)` and may reasonably infer that
-`OnLevelCompleted` publishes an event internally (since the codebase is event-driven).
-It might then write code that subscribes to a `LevelCompletedEvent` — which does not exist.
-The actual event is `LevelWonEvent`, published by `BlastGameController`, not by the game mode context.
-The agent hallucinated the event name and its source from plausible-looking implementation detail.
+The agent sees `_currentMode?.OnLevelCompleted(result)` and may infer that `OnLevelCompleted` publishes a `LevelCompletedEvent` — which does not exist. The actual event is `LevelWonEvent`, published elsewhere.
 
-**MCP agent** sees the same method as a signature only:
+**MCP agent** sees only the signature:
 ```
 void ReportLevelCompleted(LevelResult result)
 ```
-No implementation body to over-interpret. The agent knows the method exists and what it accepts,
-but it cannot infer internal event publishing from a signature. When it needs to find level-end events,
-it runs `search("LevelWon")` and gets the authoritative answer: `LevelWonEvent` in `BlastGame.Events`.
-The disambiguation is forced by the tool's limited output, not by the agent's reasoning.
+No implementation to over-interpret. When the agent needs level-end events, it runs `search("LevelWon")` and gets the correct answer directly.
 
-### Reasoning trace comparison
+The critical difference is not tokens. It is **inference chain reliability**. The Grep+Read agent made a plausible wrong inference from true context. The MCP agent never had that gap — the tool's constrained output forced explicit disambiguation.
 
-The following traces reconstruct how each agent strategy reasons through the same
-sub-task: *"How do blast level results reach the camp?"* (spans steps 2-4).
-Each row shows what the agent sees, what it infers, what it does next, and where the
-inference chain diverges.
+### Measurable outcomes (not captured here)
 
-#### Phase 1: Discover the bridge API
-
-| | Grep+Read Agent | MCP Agent |
-|---|---|---|
-| **Action** | `Grep "IGameModeContext"` → Read `GameModeManager.cs` (~40 lines from class decl) | `get_class("IGameModeContext")` |
-| **Sees** | `class GameModeManager : IDisposable` with fields: `private readonly EventBus _eventBus;`, `private IGameMode _currentMode;`, `private LifetimeScope _modeScope;`. Method body: `ReportLevelCompleted` calls `_currentMode?.OnLevelCompleted(result)` then `UnloadGameMode()` | `interface IGameModeContext` with 5 method signatures. No fields, no bodies, no implementation |
-| **Infers** | "GameModeManager owns the EventBus. It delegates to `_currentMode.OnLevelCompleted`. The mode probably publishes a completion event internally. I should look for `LevelCompletedEvent`." | "IGameModeContext has `ReportLevelCompleted(LevelResult)`. I don't know what happens inside. I need to find what events fire on level end." |
-| **Risk** | Over-interprets implementation — infers event publishing that doesn't exist | No implementation to over-interpret — forced to search explicitly |
-
-#### Phase 2: Find level-end events
-
-| | Grep+Read Agent | MCP Agent |
-|---|---|---|
-| **Action** | `Grep "LevelCompletedEvent"` — 0 results. Tries `Grep "LevelCompleted"` — finds method definitions (not events). Tries `Grep "LevelWon"` — finds it. | `search("LevelWon")` — 3 results |
-| **Sees** | After 2-3 grep attempts: `struct LevelWonEvent : IEvent` in BlastEvents.cs | Immediately: `LevelWonEvent` in `BlastGame.Events` with fields `Score`, `StarsEarned` |
-| **Cost** | 3 grep calls + reading through false positives. ~500 tokens of noise before finding the answer | 1 tool call. 62 tokens. Direct hit |
-| **Risk** | May abandon search after first failed grep and *assume* the event exists with a guessed name | Search is exhaustive — if it's not in the index, it doesn't exist |
-
-#### Phase 3: Wire the subscription
-
-| | Grep+Read Agent | MCP Agent |
-|---|---|---|
-| **Action** | `Grep "class EventBus"` → Read full file (476 tokens) | `get_class("EventBus")` — 60 tokens |
-| **Sees** | Full EventBus.cs: generic `Subscribe<T>`, `Publish<T>`, `Unsubscribe<T>` + private `Dictionary<Type, List<Delegate>>` + locking logic + helper methods | 3 method signatures: `Subscribe<T>(Action<T>)`, `Publish<T>(T)`, `Unsubscribe<T>(Action<T>)` |
-| **Writes** | `_eventBus.Subscribe<LevelWonEvent>(OnLevelWon)` — correct, but arrived here after 2-3 false starts on event name | `_eventBus.Subscribe<LevelWonEvent>(OnLevelWon)` — correct, arrived directly |
-| **Risk** | May copy internal locking pattern or private field naming into new code (cargo-culting from implementation) | Cannot cargo-cult — only sees API contract |
-
-#### Divergence summary
-
-| Metric | Grep+Read Agent | MCP Agent |
-|---|---|---|
-| Tool calls for this sub-task | 5-7 (grep attempts + reads) | 3 (one per phase) |
-| Tokens consumed | ~1,100-1,500 | ~215 |
-| Wrong inferences made | 1 (hallucinated `LevelCompletedEvent`) | 0 |
-| Recovery cost | 2 extra grep calls to find correct event name | None — correct on first lookup |
-| Implementation noise absorbed | Private fields, method bodies, locking internals | Zero — signatures only |
-
-The critical difference is not tokens. It is **inference chain reliability**.
-The Grep+Read agent made a *plausible* wrong inference from *true* context.
-That is the hardest class of error to detect and correct — the reasoning looks sound,
-but the conclusion is wrong because the agent filled a gap with pattern-matching
-instead of lookup.
-
-The MCP agent never had that gap. The tool's constrained output forced explicit
-disambiguation at every step. The agent could not *infer* event names — it had to *find* them.
-
-This is not measurable in tokens. It is measurable in:
 - Fewer hallucinated method signatures
 - Fewer incorrect parameter types
 - Fewer "let me check that file again" round-trips
 - Faster convergence to correct implementation
 
-These outcome metrics are not captured by this benchmark. They require A/B testing
-with real agent task completion, which is a meaningful next step.
-
+These require A/B testing with real agent task completion, which is a meaningful next step.

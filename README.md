@@ -117,17 +117,29 @@ Read("Converter.java", offset=504, limit=10)  # 10 lines, ~200 tokens
 
 ## Benchmarks
 
-Measured against a real Unity game project (129 files, 1,018 API records) across a 10-step cross-cutting research workflow.
+Measured across 5 real-world projects in 5 languages, each using a 10-step cross-cutting research workflow.
 
-| Strategy | Total Tokens | vs MCP |
-|----------|-------------|--------|
-| **MCP (codesurface)** | **1,021** | — |
-| Skilled Agent (Grep + partial Read) | 4,453 | 4.4x more |
-| Naive Agent (Grep + full Read) | 11,825 | 11.6x more |
+![Total Tokens — Cross-Language Comparison](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/01-total-tokens.png)
 
-Even with follow-up reads for implementation detail, the hybrid MCP + targeted Read approach uses **54% fewer tokens** than a skilled Grep+Read agent.
+| Language | Project | Files | Records | MCP | Skilled | Naive | MCP vs Skilled |
+|----------|---------|------:|--------:|----:|--------:|------:|---------------:|
+| C# | Unity game | 129 | 1,034 | **1,021** | 4,453 | 11,825 | 77% fewer |
+| TypeScript | immich | 694 | 8,344 | **1,451** | 4,500 | 14,550 | 68% fewer |
+| Java | guava | 891 | 8,377 | **1,851** | 4,200 | 26,700 | 56% fewer |
+| Go | gin | 38 | 534 | **1,791** | 2,770 | 15,300 | 35% fewer |
+| Python | codesurface | 9 | 40 | **753** | 2,000 | 10,400 | 62% fewer |
 
-See [workflow-benchmark.md](workflow-benchmark.md) for the full step-by-step analysis.
+![Hallucination Risk](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/04-hallucination.png)
+
+Even with follow-up reads for implementation detail, the hybrid MCP + targeted Read approach uses **44% fewer tokens** than a skilled Grep+Read agent and **87% fewer** than a naive agent:
+
+![Hybrid Workflow](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/03-hybrid.png)
+
+### Per-question breakdown
+
+![Per Question](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/02-per-step.png)
+
+See [workflow-benchmark.md](workflow-benchmark.md) for the full step-by-step analysis across all languages.
 
 ## Setup Details
 
