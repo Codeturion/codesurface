@@ -551,11 +551,11 @@ def _collect_params(lines: list[str], line_idx: int, initial: str) -> tuple[str,
     for j in range(line_idx + 1, min(line_idx + 50, len(lines))):
         part = lines[j].strip()
         params += " " + part
+        end = j
         if ")" in part:
             # Trim at closing paren
             paren_idx = params.index(")")
             params = params[:paren_idx]
-            end = j
             break
 
     return re.sub(r"\s+", " ", params).strip(), end
