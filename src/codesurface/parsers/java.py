@@ -272,6 +272,8 @@ def _parse_java_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=f"@interface {type_name}",
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
 
                 brace_depth = new_depth
@@ -323,6 +325,8 @@ def _parse_java_file(path: Path, base_dir: Path) -> list[dict]:
                         signature="".join(sig_parts),
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
 
                     # For enums, extract constants
@@ -342,7 +346,8 @@ def _parse_java_file(path: Path, base_dir: Path) -> list[dict]:
                             local_paren += lines[j].count("(") - lines[j].count(")")
                             j += 1
                         records.extend(_parse_record_components(
-                            record_decl, fqn, package, type_name, rel_path
+                            record_decl, fqn, package, type_name, rel_path,
+                            type_line=i + 1,
                         ))
 
                 brace_depth = new_depth
@@ -473,6 +478,8 @@ def _try_parse_class_member(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=end_i + 1,
         )
 
     # Method: public [modifiers] ReturnType name(
@@ -511,6 +518,8 @@ def _try_parse_class_member(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=end_i + 1,
             )
 
     # Field: public [static] [final] Type name [= value];
@@ -543,6 +552,8 @@ def _try_parse_class_member(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=idx + 1,
             )
 
     return None
@@ -603,6 +614,8 @@ def _try_parse_interface_member(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=end_i + 1,
             )
 
     # Interface constant: Type CONSTANT_NAME = value;
@@ -626,6 +639,8 @@ def _try_parse_interface_member(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         )
 
     return None
@@ -665,6 +680,8 @@ def _try_parse_annotation_element(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         )
 
     return None
@@ -703,6 +720,8 @@ def _parse_enum_constants(
                         signature=f"{enum_name}.{name}",
                         summary="",
                         file_path=file_path,
+                        line_start=j + 1,
+                        line_end=j + 1,
                     ))
             continue
         if started:
@@ -733,6 +752,8 @@ def _parse_enum_constants(
                         signature=f"{enum_name}.{name}",
                         summary=doc,
                         file_path=file_path,
+                        line_start=j + 1,
+                        line_end=j + 1,
                     ))
             # If we hit a semicolon on this line (after constants), stop
             if ";" in stripped and "(" not in stripped:
@@ -747,6 +768,7 @@ def _parse_enum_constants(
 
 def _parse_record_components(
     decl_line: str, base_fqn: str, package: str, record_name: str, file_path: str,
+    type_line: int,
 ) -> list[dict]:
     """Extract record components from the record declaration."""
     records = []
@@ -796,6 +818,8 @@ def _parse_record_components(
                 signature=f"{comp_type} {comp_name}",
                 summary="",
                 file_path=file_path,
+                line_start=type_line,
+                line_end=type_line,
             ))
 
     return records

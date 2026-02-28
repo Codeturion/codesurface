@@ -172,6 +172,18 @@ def _auto_reindex() -> bool:
     return changed
 
 
+def _format_file_location(r: dict) -> str:
+    """Format file path with optional line range from a record."""
+    fp = r.get("file_path", "")
+    ls = r.get("line_start", 0)
+    le = r.get("line_end", 0)
+    if ls and le and le > ls:
+        return f"{fp}:{ls}-{le}"
+    elif ls:
+        return f"{fp}:{ls}"
+    return fp
+
+
 def _format_record(r: dict) -> str:
     """Format a single API record into readable text."""
     lines = []
@@ -212,7 +224,7 @@ def _format_record(r: dict) -> str:
 
     fp = r.get("file_path", "")
     if fp:
-        lines.append(f"  File: {fp}")
+        lines.append(f"  File: {_format_file_location(r)}")
 
     return "\n".join(lines)
 
@@ -356,7 +368,7 @@ def get_class(class_name: str) -> str:
             parts.append(f"Summary: {summary}")
         fp = type_record.get("file_path", "")
         if fp:
-            parts.append(f"File: {fp}")
+            parts.append(f"File: {_format_file_location(type_record)}")
     parts.append("")
 
     groups: dict[str, list[dict]] = {}

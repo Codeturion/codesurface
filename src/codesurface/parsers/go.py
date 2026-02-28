@@ -429,7 +429,7 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
             method_name = method_m.group(3)
 
             if _is_exported(method_name) and _is_exported(receiver_type):
-                full_sig, _ = _collect_signature(lines, i)
+                full_sig, end_i = _collect_signature(lines, i)
                 params_str, returns_str = _extract_func_parts(full_sig, method_name)
                 doc = _look_back_for_doc_comment(lines, i)
 
@@ -446,6 +446,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=end_i + 1,
                 ))
 
             brace_depth = new_depth
@@ -458,7 +460,7 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
             func_name = func_m.group(1)
 
             if _is_exported(func_name):
-                full_sig, _ = _collect_signature(lines, i)
+                full_sig, end_i = _collect_signature(lines, i)
                 params_str, returns_str = _extract_func_parts(full_sig, func_name)
                 doc = _look_back_for_doc_comment(lines, i)
 
@@ -475,6 +477,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=end_i + 1,
                 ))
 
             brace_depth = new_depth
@@ -500,6 +504,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -527,6 +533,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
                     if "{" in line:
                         current_type = type_name
@@ -545,6 +553,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
                     if "{" in line:
                         current_type = type_name
@@ -565,6 +575,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=doc,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
 
             brace_depth = new_depth
@@ -590,6 +602,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -622,6 +636,8 @@ def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=sig,
                     summary=doc,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             brace_depth = new_depth
@@ -692,6 +708,8 @@ def _try_parse_struct_field(
         signature=sig,
         summary=doc,
         file_path=file_path,
+        line_start=idx + 1,
+        line_end=idx + 1,
     ))
 
 
@@ -721,7 +739,7 @@ def _try_parse_interface_method(
     if not _is_exported(method_name):
         return
 
-    full_sig, _ = _collect_signature(lines, idx)
+    full_sig, end_i = _collect_signature(lines, idx)
     params_str, returns_str = _extract_iface_method_parts(full_sig, method_name)
     doc = _look_back_for_doc_comment(lines, idx)
 
@@ -738,6 +756,8 @@ def _try_parse_interface_method(
         signature=sig,
         summary=doc,
         file_path=file_path,
+        line_start=idx + 1,
+        line_end=end_i + 1,
     ))
 
 
@@ -771,6 +791,8 @@ def _parse_group_type_entry(
                 signature=sig,
                 summary=doc,
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=idx + 1,
             ))
         return
 
@@ -799,6 +821,8 @@ def _parse_group_type_entry(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         ))
     elif rest.startswith("interface"):
         sig = f"type {name} interface"
@@ -812,6 +836,8 @@ def _parse_group_type_entry(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         ))
     else:
         underlying = rest.rstrip("{").strip()
@@ -826,6 +852,8 @@ def _parse_group_type_entry(
             signature=sig,
             summary=doc,
             file_path=file_path,
+            line_start=idx + 1,
+            line_end=idx + 1,
         ))
 
 
@@ -884,6 +912,8 @@ def _parse_group_var_const_entry(
         signature=sig,
         summary=doc,
         file_path=file_path,
+        line_start=idx + 1,
+        line_end=idx + 1,
     ))
 
 

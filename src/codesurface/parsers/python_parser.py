@@ -195,6 +195,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                     signature=signature,
                     summary=docstring,
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
             pending_decorators = []
@@ -264,6 +266,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                             signature=sig,
                             summary=docstring,
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=end_line + 1,
                         ))
                     elif is_property:
                         # Property
@@ -277,6 +281,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                             signature=sig,
                             summary=docstring,
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=end_line + 1,
                         ))
                     else:
                         # Method
@@ -301,6 +307,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                             signature=sig,
                             summary=docstring,
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=end_line + 1,
                         ))
                 else:
                     # Module-level function
@@ -318,6 +326,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=sig,
                         summary=docstring,
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=end_line + 1,
                     ))
 
             # Track function scope to skip nested definitions
@@ -356,6 +366,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                                 signature=f"{current_class}.{member_name}",
                                 summary="",
                                 file_path=rel_path,
+                                line_start=i + 1,
+                                line_end=i + 1,
                             ))
                             pending_decorators = []
                             i += 1
@@ -386,6 +398,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                             signature=sig,
                             summary="",
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=i + skip_lines + 1,
                         ))
                         pending_decorators = []
                         i += 1 + skip_lines
@@ -407,6 +421,8 @@ def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
                         signature=const_name,
                         summary="",
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
                 pending_decorators = []
                 i += 1

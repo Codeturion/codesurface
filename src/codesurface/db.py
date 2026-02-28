@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS api_records (
     params_json TEXT NOT NULL DEFAULT '[]',
     returns_text TEXT NOT NULL DEFAULT '',
     file_path TEXT NOT NULL DEFAULT '',
+    line_start INTEGER NOT NULL DEFAULT 0,
+    line_end INTEGER NOT NULL DEFAULT 0,
     search_text TEXT NOT NULL DEFAULT ''
 );
 
@@ -99,8 +101,9 @@ def insert_records(conn: sqlite3.Connection, records: list[dict]) -> int:
     sql = """
         INSERT OR REPLACE INTO api_records
         (fqn, namespace, class_name, member_name, member_type,
-         signature, summary, params_json, returns_text, file_path, search_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         signature, summary, params_json, returns_text, file_path,
+         line_start, line_end, search_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     rows = [
         (
@@ -114,6 +117,8 @@ def insert_records(conn: sqlite3.Connection, records: list[dict]) -> int:
             json.dumps(r.get("params_json", [])),
             r.get("returns_text", ""),
             r.get("file_path", ""),
+            r.get("line_start", 0),
+            r.get("line_end", 0),
             _build_search_text(r),
         )
         for r in records

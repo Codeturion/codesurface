@@ -42,25 +42,24 @@ Restart your AI tool and ask: *"What methods does MyService have?"*
 
 Add this to your project's `CLAUDE.md` (or equivalent instructions file). **This step is important.** Without it, the AI has the tools but won't know when to reach for them.
 
-```markdown
+````markdown
 ## Codebase API Lookup (codesurface MCP)
 
-When you need to find a class, method, property, or field — use the codesurface MCP tools BEFORE Grep, Glob, or Read. They return compact, ranked results and save tokens.
+Use codesurface MCP tools BEFORE Grep, Glob, Read, or Task (subagents) for any class/method/field lookup. This applies to you AND any subagents you spawn.
 
-| When | Tool | Example |
-|------|------|---------|
-| Searching for an API by keyword | `search` | `search("MergeService")` |
-| Need exact method signature | `get_signature` | `get_signature("TryMerge")` |
-| Want all members on a class | `get_class` | `get_class("BlastBoardModel")` |
-| Overview of indexed codebase | `get_stats` | `get_stats()` |
-| Force refresh after bulk file changes | `reindex` | `reindex()` (auto-refreshes on query misses) |
+| Tool | Use when | Example |
+|------|----------|---------|
+| `search` | Find APIs by keyword | `search("MergeService")` |
+| `get_signature` | Need exact signature | `get_signature("TryMerge")` |
+| `get_class` | See all members on a class | `get_class("BlastBoardModel")` |
+| `get_stats` | Codebase overview | `get_stats()` |
 
-**Rules:**
-- Before looking up a class or method, use `search` or `get_signature` instead of Grep/Glob/Read
-- Use `get_class` to see all members on a class instead of reading the source file
-- The index auto-refreshes on query misses — no need to manually reindex after editing files
-- Only fall back to Grep/Read when you need implementation details (method bodies, control flow) that the API index doesn't cover
-```
+Every result includes file path + line numbers. Use them for targeted reads:
+- `File: Service.cs:32` → `Read("Service.cs", offset=32, limit=15)`
+- `File: Converter.java:504-506` → `Read("Converter.java", offset=504, limit=10)`
+
+Never read a full file when you have a line number. Only fall back to Grep/Read for implementation details (method bodies, control flow).
+````
 
 ## Tools
 
@@ -91,6 +90,30 @@ When you need to find a class, method, property, or field — use the codesurfac
 | [cobra](https://github.com/spf13/cobra) | Go | 15 | 249 | <0.1s |
 | [gin](https://github.com/gin-gonic/gin) | Go | 41 | 574 | <0.1s |
 | Unity game (private) | C# | 129 | 1,018 | 0.1s |
+
+## Line Numbers for Targeted Reads
+
+Every record includes `line_start` and `line_end` (1-indexed). Multi-line declarations span the full signature:
+
+```
+[METHOD] com.google.common.base.Converter.from
+  Signature: static Converter<A, B> from(Function<...> forward, Function<...> backward)
+  File: Converter.java:504-506          ← multi-line signature
+
+[METHOD] server.AlbumController.createAlbum
+  Signature: createAlbum(@Auth() auth: AuthDto, @Body() dto: CreateAlbumDto)
+  File: album.controller.ts:46          ← single-line
+```
+
+This lets AI agents do **targeted reads** instead of reading full files:
+
+```python
+# Instead of reading the entire 600-line file:
+Read("Converter.java")                     # 600 lines, ~12k tokens
+
+# Read just the method + context:
+Read("Converter.java", offset=504, limit=10)  # 10 lines, ~200 tokens
+```
 
 ## Benchmarks
 

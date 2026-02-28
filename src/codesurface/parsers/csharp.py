@@ -200,6 +200,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                     params_json=doc.get("params", []),
                     returns_text="",
                     file_path=rel_path,
+                    line_start=i + 1,
+                    line_end=i + 1,
                 ))
 
                 # For enums, extract members
@@ -248,6 +250,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=[],
                             returns_text="",
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=i + 1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -258,7 +262,7 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                 # Try constructor first
                 ctor_match = _CTOR_RE.match(line)
                 if ctor_match and ctor_match.group(1) == current_class:
-                    params_str = _collect_params(lines, i, ctor_match.group(2))
+                    params_str, end_i = _collect_params(lines, i, ctor_match.group(2))
                     doc = _look_back_for_doc(lines, i)
                     sig = f"{current_class}({params_str})"
                     records.append(_build_record(
@@ -272,6 +276,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                         params_json=doc.get("params", []),
                         returns_text="",
                         file_path=rel_path,
+                        line_start=i + 1,
+                        line_end=end_i + 1,
                     ))
                     brace_depth = new_depth
                     i += 1
@@ -281,7 +287,7 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                 if method_match:
                     ret_type = method_match.group(1).strip()
                     meth_name = method_match.group(2)
-                    params_str = _collect_params(lines, i, method_match.group(3))
+                    params_str, end_i = _collect_params(lines, i, method_match.group(3))
                     if meth_name not in _SKIP_NAMES:
                         doc = _look_back_for_doc(lines, i)
                         sig = f"{ret_type} {meth_name}({params_str})"
@@ -296,6 +302,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=doc.get("params", []),
                             returns_text=doc.get("returns", ""),
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=end_i + 1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -323,6 +331,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=[],
                             returns_text="",
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=i + 1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -351,6 +361,8 @@ def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
                             params_json=[],
                             returns_text="",
                             file_path=rel_path,
+                            line_start=i + 1,
+                            line_end=i + 1,
                         ))
                     brace_depth = new_depth
                     i += 1
@@ -402,6 +414,8 @@ def _try_parse_interface_member(
                 params_json=doc.get("params", []),
                 returns_text=doc.get("returns", ""),
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=idx + 1,
             )
 
     # Interface property
@@ -424,6 +438,8 @@ def _try_parse_interface_member(
                 params_json=[],
                 returns_text="",
                 file_path=file_path,
+                line_start=idx + 1,
+                line_end=idx + 1,
             )
 
     return None
@@ -467,6 +483,8 @@ def _parse_enum_members(
                         params_json=[],
                         returns_text="",
                         file_path=file_path,
+                        line_start=i + 1,
+                        line_end=i + 1,
                     ))
     return records
 
@@ -518,23 +536,29 @@ def _look_back_for_doc(lines: list[str], decl_idx: int) -> dict:
     return result
 
 
-def _collect_params(lines: list[str], line_idx: int, initial: str) -> str:
-    """Collect parameters that may span multiple lines."""
+def _collect_params(lines: list[str], line_idx: int, initial: str) -> tuple[str, int]:
+    """Collect parameters that may span multiple lines.
+
+    Returns (params_str, end_line_idx) where end_line_idx is the 0-based
+    index of the last line consumed by the parameter list.
+    """
     params = initial.strip()
     if ")" in lines[line_idx]:
-        return params
+        return re.sub(r"\s+", " ", params).strip(), line_idx
 
     # Multi-line params -- collect until closing paren
+    end = line_idx
     for j in range(line_idx + 1, min(line_idx + 50, len(lines))):
         part = lines[j].strip()
         params += " " + part
+        end = j
         if ")" in part:
             # Trim at closing paren
             paren_idx = params.index(")")
             params = params[:paren_idx]
             break
 
-    return re.sub(r"\s+", " ", params).strip()
+    return re.sub(r"\s+", " ", params).strip(), end
 
 
 def _extract_accessors(line: str) -> str:
