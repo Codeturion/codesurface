@@ -12,3 +12,4 @@ CLAUDE.md
 .mcp.json
 ROADMAP.md
 .claude/settings.local.json
+scripts/generate_charts.py
