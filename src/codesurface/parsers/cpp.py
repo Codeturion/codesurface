@@ -299,6 +299,16 @@ def _parse_cpp_file(path: Path, base_dir: Path) -> list[dict]:
             i += 1
             continue
 
+        # Constructor initializer list lines (: member(val) or , member(val))
+        if stripped.startswith(":") and not stripped.startswith("::"):
+            brace_depth += _count_braces(line)
+            i += 1
+            continue
+        if stripped.startswith(",") and "(" in stripped:
+            brace_depth += _count_braces(line)
+            i += 1
+            continue
+
         # Preprocessor
         if _PREPROCESSOR_RE.match(line):
             # Skip continuation lines
@@ -874,6 +884,15 @@ def _parse_cpp_file(path: Path, base_dir: Path) -> list[dict]:
 
             # Skip if this is actually a constructor (name matches class)
             if class_stack and func_name == class_stack[-1][0]:
+                pending_template = ""
+                brace_depth = new_depth
+                i += 1
+                continue
+
+            # Skip macro-style variable declarations: TYPE MACRO(name) = value
+            body_pos = _find_body_brace(stripped)
+            after_parens = stripped[stripped.find(")") + 1:body_pos if body_pos != -1 else len(stripped)].strip() if ")" in stripped else ""
+            if after_parens.startswith("=") and not any(after_parens.startswith(p) for p in ("= 0", "= default", "= delete")):
                 pending_template = ""
                 brace_depth = new_depth
                 i += 1
