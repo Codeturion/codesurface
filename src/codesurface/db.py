@@ -38,10 +38,11 @@ def _build_search_text(record: dict) -> str:
         val = record.get(field, "")
         if val:
             tokens.append(split_identifier(val))
-    # Last namespace segment (e.g. "Services" from "CampGame.Services")
+    # Last namespace segment (e.g. "Services" from "CampGame.Services",
+    # or "Utils" from "MyLib::Utils")
     ns = record.get("namespace", "")
     if ns:
-        last_part = ns.rsplit(".", 1)[-1]
+        last_part = re.split(r"[.:]", ns)[-1]
         tokens.append(split_identifier(last_part))
     return " ".join(tokens)
 
@@ -188,13 +189,32 @@ def get_by_fqn(conn: sqlite3.Connection, fqn: str) -> dict | None:
     return dict(row) if row else None
 
 
-def get_class_members(conn: sqlite3.Connection, class_name: str) -> list[dict]:
-    """Get all members of a class by class name."""
+def get_class_members(conn: sqlite3.Connection, class_name: str,
+                      namespace: str | None = None) -> list[dict]:
+    """Get all members of a class by class name, optionally filtered by namespace."""
+    if namespace is not None:
+        rows = conn.execute(
+            "SELECT * FROM api_records WHERE class_name = ? AND namespace = ? "
+            "ORDER BY member_type, member_name",
+            (class_name, namespace),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM api_records WHERE class_name = ? ORDER BY member_type, member_name",
+            (class_name,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_class_namespaces(conn: sqlite3.Connection, class_name: str) -> list[str]:
+    """Get all distinct namespaces that contain a class with this name."""
     rows = conn.execute(
-        "SELECT * FROM api_records WHERE class_name = ? ORDER BY member_type, member_name",
+        "SELECT DISTINCT namespace FROM api_records "
+        "WHERE class_name = ? AND member_type = 'type' "
+        "ORDER BY namespace",
         (class_name,),
     ).fetchall()
-    return [dict(row) for row in rows]
+    return [row["namespace"] for row in rows]
 
 
 def resolve_namespace(conn: sqlite3.Connection, name: str) -> list[dict]:
@@ -249,7 +269,7 @@ def _escape_fts(query: str) -> str:
       "ICommand"            → (ICommand*) OR (I Command*)
     """
     q = query
-    for ch in '."-*()':
+    for ch in '."-*():,;{}[]!@#$%^&+|\\~`':
         q = q.replace(ch, " ")
     terms = [t for t in q.split() if t]
     if not terms:

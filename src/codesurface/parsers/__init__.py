@@ -53,12 +53,14 @@ def all_extensions() -> list[str]:
 
 # --- Auto-register built-in parsers ---
 
+from .cpp import CppParser  # noqa: E402
 from .csharp import CSharpParser  # noqa: E402
 from .go import GoParser  # noqa: E402
 from .java import JavaParser  # noqa: E402
 from .python_parser import PythonParser  # noqa: E402
 from .typescript import TypeScriptParser  # noqa: E402
 
+register("cpp", CppParser)
 register("csharp", CSharpParser)
 register("go", GoParser)
 register("java", JavaParser)

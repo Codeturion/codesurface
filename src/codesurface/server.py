@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -172,6 +173,32 @@ def _auto_reindex() -> bool:
     return changed
 
 
+def _pick_primary_namespace(namespaces: list[str], members: list[dict]) -> str | None:
+    """Pick the most likely primary namespace when a class name is ambiguous.
+
+    Heuristic: prefer the namespace whose members have file_paths NOT in thirdparty/
+    directories. If still ambiguous, pick the namespace with the most members.
+    Returns None if no clear winner (caller should use all members).
+    """
+    if not namespaces:
+        return None
+
+    # Count members per namespace, preferring non-thirdparty paths
+    ns_scores: dict[str, tuple[int, int]] = {}  # ns -> (non_thirdparty_count, total_count)
+    for m in members:
+        ns = m.get("namespace", "")
+        fp = m.get("file_path", "")
+        is_thirdparty = any(seg in fp.lower() for seg in ("thirdparty/", "third_party/", "3rdparty/", "vendor/", "extern/"))
+        prev = ns_scores.get(ns, (0, 0))
+        ns_scores[ns] = (prev[0] + (0 if is_thirdparty else 1), prev[1] + 1)
+
+    # Sort: prefer most non-thirdparty members, then most total members
+    ranked = sorted(ns_scores.items(), key=lambda x: (x[1][0], x[1][1]), reverse=True)
+    if ranked:
+        return ranked[0][0]
+    return None
+
+
 def _format_file_location(r: dict) -> str:
     """Format file path with optional line range from a record."""
     fp = r.get("file_path", "")
@@ -337,12 +364,20 @@ def get_class(class_name: str) -> str:
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
-    short_name = class_name.rsplit(".", 1)[-1]
-    members = db.get_class_members(_conn, short_name)
+    # Support namespace-qualified queries: "cv::Mat", "embree::Object"
+    ns_filter = None
+    if "::" in class_name:
+        parts_split = class_name.rsplit("::", 1)
+        ns_filter = parts_split[0]
+        short_name = parts_split[1]
+    else:
+        short_name = re.split(r"[.:]", class_name)[-1]
+
+    members = db.get_class_members(_conn, short_name, namespace=ns_filter)
 
     if not members:
         if _auto_reindex():
-            members = db.get_class_members(_conn, short_name)
+            members = db.get_class_members(_conn, short_name, namespace=ns_filter)
         if not members:
             results = db.search(_conn, class_name, n=5, member_type="type")
             if results:
@@ -351,6 +386,16 @@ def get_class(class_name: str) -> str:
                     parts.append(f"  {r['fqn']} — {r.get('signature', '')}")
                 return "\n".join(parts)
             return f"No class '{class_name}' found."
+
+    # If no namespace filter was given, check for ambiguity
+    if not ns_filter:
+        namespaces = db.get_class_namespaces(_conn, short_name)
+        if len(namespaces) > 1:
+            # Pick the most likely namespace: prefer non-empty, non-thirdparty
+            # Show disambiguation notice
+            ns_filter = _pick_primary_namespace(namespaces, members)
+            if ns_filter is not None:
+                members = db.get_class_members(_conn, short_name, namespace=ns_filter)
 
     _index_fresh = False
     type_record = next((m for m in members if m["member_type"] == "type"), None)
@@ -369,6 +414,14 @@ def get_class(class_name: str) -> str:
         fp = type_record.get("file_path", "")
         if fp:
             parts.append(f"File: {_format_file_location(type_record)}")
+
+    # Show disambiguation note if same class name exists in other namespaces
+    if not ns_filter:
+        all_ns = db.get_class_namespaces(_conn, short_name)
+        other_ns = [n for n in all_ns if n != ns]
+        if other_ns:
+            also = ", ".join(f'"{n}::{short_name}"' if n else f'"::{short_name}"' for n in other_ns[:5])
+            parts.append(f"Note: also found in other namespaces. Use qualified name to disambiguate: {also}")
     parts.append("")
 
     groups: dict[str, list[dict]] = {}
