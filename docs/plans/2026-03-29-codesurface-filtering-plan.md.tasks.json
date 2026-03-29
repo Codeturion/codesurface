@@ -1,0 +1,12 @@
+{
+  "planPath": "docs/plans/2026-03-29-codesurface-filtering-plan.md",
+  "tasks": [
+    {"id": 3, "subject": "Task 1: PathFilter — default skip rules", "status": "pending"},
+    {"id": 4, "subject": "Task 2: PathFilter — user exclusions", "status": "pending", "blockedBy": [3]},
+    {"id": 5, "subject": "Task 3: Wire PathFilter into parse_directory", "status": "pending", "blockedBy": [3, 4]},
+    {"id": 6, "subject": "Task 4: Wire PathFilter into server", "status": "pending", "blockedBy": [5]},
+    {"id": 7, "subject": "Task 5: Query-time file_path filtering", "status": "pending", "blockedBy": [5, 6]},
+    {"id": 8, "subject": "Task 6: pr-manager codesurface review servers", "status": "pending", "blockedBy": [6, 7]}
+  ],
+  "lastUpdated": "2026-03-29T00:00:00Z"
+}
