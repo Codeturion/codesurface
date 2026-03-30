@@ -7,8 +7,12 @@ Docstrings are extracted as summaries.
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .base import BaseParser
+
+if TYPE_CHECKING:
+    from ..filters import PathFilter
 
 
 # --- Skip patterns ---
@@ -73,7 +77,9 @@ class PythonParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".py"]
 
-    def parse_directory(self, directory: Path) -> list[dict]:
+    def parse_directory(
+        self, directory: Path, path_filter: "PathFilter | None" = None
+    ) -> list[dict]:
         """Override to skip common non-source directories."""
         records = []
         for f in sorted(directory.rglob("*.py")):
@@ -85,6 +91,22 @@ class PythonParser(BaseParser):
                 continue
             if f.name in _SKIP_FILES:
                 continue
+            if path_filter is not None:
+                try:
+                    rel_parts = f.relative_to(directory).parts
+                except ValueError:
+                    continue
+                excluded = False
+                current = directory
+                for part in rel_parts[:-1]:
+                    current = current / part
+                    if path_filter.is_dir_excluded(current):
+                        excluded = True
+                        break
+                if excluded:
+                    continue
+                if path_filter.is_file_excluded(f):
+                    continue
             try:
                 records.extend(self.parse_file(f, directory))
             except Exception as e:
