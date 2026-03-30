@@ -73,3 +73,38 @@ def test_normal_dir_not_skipped(tmp_project):
 def test_src_dir_not_skipped(tmp_project):
     pf = PathFilter(tmp_project)
     assert not pf.is_dir_excluded(tmp_project / "src")
+
+
+def test_exclude_glob_skips_matching_file(tmp_project):
+    pf = PathFilter(tmp_project, exclude_globs=["tests/**"])
+    (tmp_project / "tests").mkdir()
+    test_file = tmp_project / "tests" / "foo.ts"
+    test_file.write_text("")
+    assert pf.is_file_excluded(test_file)
+
+
+def test_exclude_glob_does_not_skip_nonmatching(tmp_project):
+    pf = PathFilter(tmp_project, exclude_globs=["tests/**"])
+    assert not pf.is_file_excluded(tmp_project / "src" / "main.ts")
+
+
+def test_codesurfaceignore_loaded(tmp_project):
+    (tmp_project / ".codesurfaceignore").write_text("generated/**\n# comment\n\n")
+    pf = PathFilter(tmp_project)
+    gen_file = tmp_project / "generated" / "types.ts"
+    assert pf.is_file_excluded(gen_file)
+
+
+def test_codesurfaceignore_and_cli_globs_merged(tmp_project):
+    (tmp_project / ".codesurfaceignore").write_text("generated/**\n")
+    pf = PathFilter(tmp_project, exclude_globs=["tests/**"])
+    gen_file = tmp_project / "generated" / "types.ts"
+    test_file = tmp_project / "tests" / "foo.ts"
+    assert pf.is_file_excluded(gen_file)
+    assert pf.is_file_excluded(test_file)
+
+
+def test_codesurfaceignore_missing_is_fine(tmp_project):
+    # No .codesurfaceignore present — should not raise
+    pf = PathFilter(tmp_project)
+    assert not pf.is_file_excluded(tmp_project / "src" / "main.ts")

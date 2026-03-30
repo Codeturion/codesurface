@@ -30,6 +30,19 @@ def _is_git_submodule(git_content: str) -> bool:
     return "/modules/" in git_content
 
 
+def _read_ignore_file(project_root: Path) -> list[str]:
+    """Read .codesurfaceignore and return non-empty, non-comment lines."""
+    ignore_path = project_root / ".codesurfaceignore"
+    if not ignore_path.is_file():
+        return []
+    lines = []
+    for line in ignore_path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(stripped)
+    return lines
+
+
 class PathFilter:
     """Determines which directories and files to skip during indexing.
 
@@ -50,7 +63,8 @@ class PathFilter:
     ) -> None:
         self._root = project_root
         self._include_submodules = include_submodules
-        self._globs: list[str] = []  # populated in Task 2
+        self._globs: list[str] = list(exclude_globs or [])
+        self._globs.extend(_read_ignore_file(project_root))
 
     def is_dir_excluded(self, path: Path) -> bool:
         """Return True if this directory should be skipped entirely."""
@@ -69,5 +83,11 @@ class PathFilter:
         return False
 
     def is_file_excluded(self, path: Path) -> bool:
-        """Return True if this file should be skipped. Used for user globs (Task 2)."""
-        return False  # expanded in Task 2
+        """Return True if this file matches any user exclusion glob."""
+        if not self._globs:
+            return False
+        try:
+            rel = str(path.relative_to(self._root)).replace("\\", "/")
+        except ValueError:
+            return False
+        return any(fnmatch.fnmatch(rel, g) for g in self._globs)
