@@ -9,6 +9,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from . import db
+from .filters import PathFilter
 from .parsers import all_extensions, detect_languages, get_parser, get_parsers_for_project
 
 mcp = FastMCP(
@@ -24,6 +25,7 @@ _conn = None
 _project_path: Path | None = None
 _file_mtimes: dict[str, float] = {}  # rel_path → mtime
 _index_fresh: bool = True  # True = checked for changes since last hit; skip auto-reindex
+_path_filter: PathFilter | None = None
 
 
 def _index_full(project_path: Path, language: str | None = None) -> str:
@@ -41,7 +43,7 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
 
     records = []
     for parser in parsers:
-        records.extend(parser.parse_directory(project_path))
+        records.extend(parser.parse_directory(project_path, path_filter=_path_filter))
     parse_time = time.perf_counter() - t0
 
     t1 = time.perf_counter()
@@ -89,6 +91,22 @@ def _index_incremental(project_path: Path) -> tuple[str, bool]:
     current: dict[str, float] = {}
     for ext in extensions:
         for f in sorted(project_path.rglob(f"*{ext}")):
+            if _path_filter is not None:
+                try:
+                    rel_parts = f.relative_to(project_path).parts
+                except ValueError:
+                    continue
+                skip = False
+                cur = project_path
+                for part in rel_parts[:-1]:
+                    cur = cur / part
+                    if _path_filter.is_dir_excluded(cur):
+                        skip = True
+                        break
+                if skip:
+                    continue
+                if _path_filter.is_file_excluded(f):
+                    continue
             rel = str(f.relative_to(project_path)).replace("\\", "/")
             try:
                 current[rel] = f.stat().st_mtime
@@ -468,15 +486,27 @@ def main():
                         help="Path to source directory to index")
     parser.add_argument("--language", default=None,
                         help="Language to parse (e.g. csharp). Auto-detected if omitted.")
+    parser.add_argument("--exclude", default=None,
+                        help="Comma-separated glob patterns to exclude from indexing "
+                             "(e.g. 'tests/**,generated/**')")
+    parser.add_argument("--include-submodules", action="store_true", default=False,
+                        help="Include git submodules in indexing (excluded by default)")
     args, remaining = parser.parse_known_args()
 
-    global _project_path
+    global _project_path, _path_filter
+
+    exclude_globs = [g.strip() for g in args.exclude.split(",")] if args.exclude else []
 
     if args.project:
         _project_path = Path(args.project)
         if not _project_path.is_dir():
             print(f"Warning: Project path not found: {args.project}", file=sys.stderr)
         else:
+            _path_filter = PathFilter(
+                _project_path,
+                exclude_globs=exclude_globs,
+                include_submodules=args.include_submodules,
+            )
             summary = _index_full(_project_path, language=args.language)
             print(summary, file=sys.stderr)
 
