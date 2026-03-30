@@ -7,8 +7,12 @@ JSDoc comments (/** ... */) are extracted as summaries.
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .base import BaseParser
+
+if TYPE_CHECKING:
+    from ..filters import PathFilter
 
 
 # --- Skip patterns ---
@@ -149,8 +153,14 @@ class TypeScriptParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".ts", ".tsx"]
 
-    def parse_directory(self, directory: Path) -> list[dict]:
-        """Override to skip test/build/node_modules directories."""
+    def parse_directory(
+        self, directory: Path, path_filter: "PathFilter | None" = None
+    ) -> list[dict]:
+        """Override to skip test/build/node_modules directories.
+
+        If path_filter is provided, excluded directories and files are also
+        skipped before the built-in skip rules are applied.
+        """
         records = []
         for ext in self.file_extensions:
             for f in sorted(directory.rglob(f"*{ext}")):
@@ -160,6 +170,20 @@ class TypeScriptParser(BaseParser):
                 fname = f.name
                 if any(fname.endswith(s) for s in _SKIP_SUFFIXES):
                     continue
+                if path_filter is not None:
+                    # Check each ancestor directory between root and file
+                    excluded = False
+                    current = directory
+                    for part in parts[:-1]:  # all parts except the filename
+                        current = current / part
+                        if path_filter.is_dir_excluded(current):
+                            excluded = True
+                            break
+                    if excluded:
+                        continue
+                    # Check file-level exclusion
+                    if path_filter.is_file_excluded(f):
+                        continue
                 try:
                     records.extend(self.parse_file(f, directory))
                 except Exception as e:
