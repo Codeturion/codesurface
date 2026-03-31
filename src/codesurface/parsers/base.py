@@ -3,7 +3,7 @@
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from ..filters import PathFilter
@@ -26,7 +26,8 @@ class BaseParser(ABC):
         """Parse a single file and return API records."""
 
     def parse_directory(
-        self, directory: Path, path_filter: "PathFilter | None" = None
+        self, directory: Path, path_filter: "PathFilter | None" = None,
+        on_progress: "Callable[[Path], None] | None" = None,
     ) -> list[dict]:
         """Recursively parse all matching files under *directory*.
 
@@ -54,6 +55,8 @@ class BaseParser(ABC):
                     continue
                 try:
                     records.extend(self.parse_file(f, directory))
+                    if on_progress is not None:
+                        on_progress(f)
                 except Exception:
                     continue
 

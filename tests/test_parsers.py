@@ -57,3 +57,20 @@ def test_no_filter_indexes_worktrees_too(ts_project):
     assert "FooService" in names
     # WtService IS found without a filter (old behaviour)
     assert "WtService" in names
+
+
+def test_on_progress_called_per_file(ts_project):
+    """on_progress is called once per successfully parsed file."""
+    parser = TypeScriptParser()
+    visited = []
+    parser.parse_directory(ts_project, on_progress=lambda f: visited.append(f))
+    # ts_project has service.ts, gen.ts, and a worktree service.ts (3 .ts files total without filter)
+    assert len(visited) == 3
+    assert all(isinstance(f, Path) for f in visited)
+
+
+def test_on_progress_none_is_default(ts_project):
+    """Omitting on_progress works exactly as before."""
+    parser = TypeScriptParser()
+    records = parser.parse_directory(ts_project)
+    assert len(records) > 0
