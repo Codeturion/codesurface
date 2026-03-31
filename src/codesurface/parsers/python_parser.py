@@ -8,7 +8,7 @@ Docstrings are extracted as summaries.
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .base import BaseParser
 
@@ -79,7 +79,8 @@ class PythonParser(BaseParser):
         return [".py"]
 
     def parse_directory(
-        self, directory: Path, path_filter: "PathFilter | None" = None
+        self, directory: Path, path_filter: "PathFilter | None" = None,
+        on_progress: "Callable[[Path], None] | None" = None,
     ) -> list[dict]:
         """Override to skip common non-source directories."""
         records = []
@@ -102,6 +103,8 @@ class PythonParser(BaseParser):
                     continue
                 try:
                     records.extend(self.parse_file(f, directory))
+                    if on_progress is not None:
+                        on_progress(f)
                 except Exception as e:
                     import sys
                     print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)

@@ -3,6 +3,9 @@ from pathlib import Path
 import pytest
 from codesurface.filters import PathFilter
 from codesurface.parsers.typescript import TypeScriptParser
+from codesurface.parsers.python_parser import PythonParser
+from codesurface.parsers.go import GoParser
+from codesurface.parsers.java import JavaParser
 
 
 @pytest.fixture
@@ -74,3 +77,39 @@ def test_on_progress_none_is_default(ts_project):
     parser = TypeScriptParser()
     records = parser.parse_directory(ts_project)
     assert len(records) > 0
+
+
+@pytest.fixture
+def py_project(tmp_path):
+    (tmp_path / "mod.py").write_text("def hello(): pass\n")
+    return tmp_path
+
+
+def test_typescript_on_progress(ts_project):
+    parser = TypeScriptParser()
+    visited = []
+    parser.parse_directory(ts_project, on_progress=lambda f: visited.append(f))
+    assert len(visited) >= 1
+
+
+def test_python_on_progress(py_project):
+    parser = PythonParser()
+    visited = []
+    parser.parse_directory(py_project, on_progress=lambda f: visited.append(f))
+    assert len(visited) == 1
+
+
+def test_go_on_progress(tmp_path):
+    (tmp_path / "main.go").write_text("package main\nfunc Hello() {}\n")
+    parser = GoParser()
+    visited = []
+    parser.parse_directory(tmp_path, on_progress=lambda f: visited.append(f))
+    assert len(visited) == 1
+
+
+def test_java_on_progress(tmp_path):
+    (tmp_path / "Foo.java").write_text("public class Foo { public void bar() {} }\n")
+    parser = JavaParser()
+    visited = []
+    parser.parse_directory(tmp_path, on_progress=lambda f: visited.append(f))
+    assert len(visited) == 1
