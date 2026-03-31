@@ -29,6 +29,27 @@ _index_fresh: bool = True  # True = checked for changes since last hit; skip aut
 _path_filter: PathFilter | None = None
 
 
+def _count_files(
+    project_path: Path,
+    parsers: list,
+    path_filter: "PathFilter | None",
+) -> int:
+    """Quick pre-scan: count source files that will be parsed."""
+    extensions = set()
+    for p in parsers:
+        extensions.update(p.file_extensions)
+    exts = tuple(extensions)
+    total = 0
+    for root, dirs, files in os.walk(project_path):
+        root_path = Path(root)
+        if path_filter is not None:
+            dirs[:] = [d for d in dirs if not path_filter.is_dir_excluded(root_path / d)]
+        for filename in files:
+            if filename.endswith(exts):
+                total += 1
+    return total
+
+
 def _index_full(project_path: Path, language: str | None = None) -> str:
     """Full parse + rebuild. Used on startup."""
     global _conn, _file_mtimes
@@ -42,9 +63,39 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
     if not parsers:
         return "No supported source files detected in project directory."
 
+    total = _count_files(project_path, parsers, _path_filter)
+    print(f"[codesurface] scanning {total:,} files...", file=sys.stderr, flush=True)
+
+    parsed = [0]
+    last_pct = [0.0]
+    last_time = [t0]
+
+    # Emit the 0% line immediately
+    print(
+        f"[codesurface] indexing:   0% ({0:>6,} / {total:,})",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    def on_progress(f: Path) -> None:
+        parsed[0] += 1
+        now = time.perf_counter()
+        pct = parsed[0] / max(total, 1)
+        elapsed = now - t0
+        if pct - last_pct[0] >= 0.05 or now - last_time[0] >= 3.0:
+            print(
+                f"[codesurface] indexing: {pct:3.0%} ({parsed[0]:>6,} / {total:,})  {elapsed:.1f}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            last_pct[0] = pct
+            last_time[0] = now
+
     records = []
     for parser in parsers:
-        records.extend(parser.parse_directory(project_path, path_filter=_path_filter))
+        records.extend(
+            parser.parse_directory(project_path, path_filter=_path_filter, on_progress=on_progress)
+        )
     parse_time = time.perf_counter() - t0
 
     t1 = time.perf_counter()
@@ -74,11 +125,12 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
 
     stats = db.get_stats(_conn)
     langs = ", ".join(type(p).__name__.replace("Parser", "") for p in parsers)
-    return (
-        f"Indexed {stats['total']} records from {stats.get('files', 0)} files "
-        f"({langs}) in {parse_time + db_time:.2f}s "
-        f"(parse: {parse_time:.2f}s, db: {db_time:.2f}s)"
+    summary = (
+        f"[codesurface] done: {stats['total']:,} records from {stats.get('files', 0):,} files "
+        f"({langs}) in {parse_time + db_time:.2f}s"
     )
+    print(summary, file=sys.stderr, flush=True)
+    return summary
 
 
 def _index_incremental(project_path: Path) -> tuple[str, bool]:
