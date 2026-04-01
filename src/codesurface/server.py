@@ -570,7 +570,7 @@ def main():
     exclude_globs = [g.strip() for g in args.exclude.split(",")] if args.exclude else []
 
     if args.project:
-        _project_path = Path(args.project)
+        _project_path = Path(args.project).expanduser().resolve()
         if not _project_path.is_dir():
             print(f"Warning: Project path not found: {args.project}", file=sys.stderr)
         else:
