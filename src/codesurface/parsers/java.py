@@ -9,22 +9,8 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
 
 from .base import BaseParser
-
-if TYPE_CHECKING:
-    from ..filters import PathFilter
-
-
-# --- Skip patterns ---
-
-_SKIP_DIRS = frozenset({
-    "test", "tests", "target", "build", ".gradle", ".git",
-    "node_modules", ".mvn", "out", "generated",
-    "generated-sources", "generated-test-sources",
-    ".idea", "bin",
-})
 
 _SKIP_SUFFIXES = (
     "Test.java",
@@ -137,37 +123,13 @@ class JavaParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".java"]
 
-    def parse_directory(
-        self, directory: Path, path_filter: "PathFilter | None" = None,
-        on_progress: "Callable[[Path], None] | None" = None,
-    ) -> list[dict]:
-        """Override to skip test/build directories."""
-        records = []
-        for root, dirs, files in os.walk(directory):
-            root_path = Path(root)
-            dirs[:] = [
-                d for d in dirs
-                if d not in _SKIP_DIRS
-                and (path_filter is None or not path_filter.is_dir_excluded(root_path / d))
-            ]
-            for filename in files:
-                if not filename.endswith(".java"):
-                    continue
-                if filename in _SKIP_FILES:
-                    continue
-                if any(filename.endswith(s) for s in _SKIP_SUFFIXES):
-                    continue
-                f = root_path / filename
-                if path_filter is not None and path_filter.is_file_excluded(f):
-                    continue
-                try:
-                    records.extend(self.parse_file(f, directory))
-                except Exception as e:
-                    print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
-                finally:
-                    if on_progress is not None:
-                        on_progress(f)
-        return records
+    @property
+    def skip_suffixes(self) -> tuple[str, ...]:
+        return _SKIP_SUFFIXES
+
+    @property
+    def skip_files(self) -> frozenset[str]:
+        return _SKIP_FILES
 
     def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
         return _parse_java_file(path, base_dir)
@@ -176,11 +138,12 @@ class JavaParser(BaseParser):
 def _parse_java_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single .java file and extract public API members."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
     records: list[dict] = []
 

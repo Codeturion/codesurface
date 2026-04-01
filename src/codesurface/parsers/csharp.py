@@ -4,6 +4,7 @@ Scans every line tracking namespace/class context, captures public members
 with their full signatures. Doc comments (///) are extracted as bonus data.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -112,11 +113,12 @@ class CSharpParser(BaseParser):
 def _parse_cs_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single .cs file and extract all public members."""
     try:
-        text = path.read_text(encoding="utf-8-sig", errors="replace")
+        with open(path, encoding="utf-8-sig", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
     records = []
 

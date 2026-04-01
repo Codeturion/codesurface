@@ -1,12 +1,34 @@
 """Path filtering for codesurface indexing.
 
-Handles default exclusions (worktrees, submodules) and user-configured
-exclusions (.codesurfaceignore, --exclude CLI flag).
+Handles default exclusions (worktrees, submodules, vendored/build dirs)
+and user-configured exclusions (.codesurfaceignore, --exclude CLI flag).
 """
 from __future__ import annotations
 
 import fnmatch
 from pathlib import Path
+
+# Directories excluded by name in every project — vendored deps, build
+# output, VCS internals, and IDE config that never contain user source.
+_DEFAULT_EXCLUDED_DIRS: frozenset[str] = frozenset({
+    # JS / Node
+    "node_modules", "bower_components",
+    # Python
+    ".venv", "venv", "env", "__pycache__", ".tox", ".mypy_cache",
+    ".pytest_cache", "site-packages",
+    # Go
+    "vendor", "testdata", "third_party", "examples", "example",
+    # .NET / Java
+    "bin", "obj", "packages", ".gradle", ".mvn",
+    "generated", "generated-sources", "generated-test-sources",
+    # Build output / caches
+    "dist", "build", "out", "target", ".next", ".nuxt", ".nx",
+    # VCS / IDE
+    ".git", ".hg", ".svn",
+    ".idea", ".vscode", ".vs",
+    # Misc
+    ".yarn", ".pnp", "coverage", ".turbo", ".cache", ".worktrees",
+})
 
 
 def _read_git_file(path: Path) -> str | None:
@@ -66,13 +88,18 @@ class PathFilter:
         self._globs: list[str] = list(exclude_globs or [])
         self._globs.extend(_read_ignore_file(project_root))
 
+    def is_dir_excluded_name(self, name: str) -> bool:
+        """Fast check using only the directory basename (no I/O)."""
+        return name in _DEFAULT_EXCLUDED_DIRS
+
     def is_dir_excluded(self, path: Path) -> bool:
         """Return True if this directory should be skipped entirely."""
-        # Rule 1: .worktrees by name
-        if path.name == ".worktrees":
+        name = path.name
+
+        if name in _DEFAULT_EXCLUDED_DIRS:
             return True
 
-        # Rule 2: .git FILE detection
+        # .git FILE detection (worktrees / submodules)
         git_content = _read_git_file(path)
         if git_content is not None:
             if _is_git_worktree(git_content):
@@ -91,3 +118,9 @@ class PathFilter:
         except ValueError:
             return False
         return any(fnmatch.fnmatch(rel, g) for g in self._globs)
+
+    def is_file_excluded_rel(self, rel_path: str) -> bool:
+        """Return True if a relative path matches any user exclusion glob."""
+        if not self._globs:
+            return False
+        return any(fnmatch.fnmatch(rel_path, g) for g in self._globs)

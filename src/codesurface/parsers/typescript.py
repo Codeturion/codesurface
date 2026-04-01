@@ -9,26 +9,14 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
 
 from .base import BaseParser
-
-if TYPE_CHECKING:
-    from ..filters import PathFilter
 
 
 # --- Skip patterns ---
 
-_SKIP_DIRS = frozenset({
-    "node_modules", "dist", "build", ".git", ".next",
-    "__tests__", "__mocks__", "coverage", ".turbo", ".cache",
-    ".tox", ".mypy_cache", ".venv", "venv",
-})
-
 _SKIP_SUFFIXES = (
     ".d.ts",
-    ".test.ts", ".test.tsx",
-    ".spec.ts", ".spec.tsx",
     ".stories.ts", ".stories.tsx",
 )
 
@@ -155,40 +143,9 @@ class TypeScriptParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".ts", ".tsx"]
 
-    def parse_directory(
-        self, directory: Path, path_filter: "PathFilter | None" = None,
-        on_progress: "Callable[[Path], None] | None" = None,
-    ) -> list[dict]:
-        """Override to skip test/build/node_modules directories.
-
-        If path_filter is provided, excluded directories and files are also
-        skipped before the built-in skip rules are applied.
-        """
-        exts = tuple(self.file_extensions)
-        records = []
-        for root, dirs, files in os.walk(directory):
-            root_path = Path(root)
-            dirs[:] = [
-                d for d in dirs
-                if d not in _SKIP_DIRS
-                and (path_filter is None or not path_filter.is_dir_excluded(root_path / d))
-            ]
-            for filename in files:
-                if not filename.endswith(exts):
-                    continue
-                if any(filename.endswith(s) for s in _SKIP_SUFFIXES):
-                    continue
-                f = root_path / filename
-                if path_filter is not None and path_filter.is_file_excluded(f):
-                    continue
-                try:
-                    records.extend(self.parse_file(f, directory))
-                except Exception as e:
-                    print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
-                finally:
-                    if on_progress is not None:
-                        on_progress(f)
-        return records
+    @property
+    def skip_suffixes(self) -> tuple[str, ...]:
+        return _SKIP_SUFFIXES
 
     def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
         return _parse_ts_file(path, base_dir)
@@ -197,15 +154,16 @@ class TypeScriptParser(BaseParser):
 def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single TypeScript file and extract exported API members."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
     records: list[dict] = []
 
-    namespace = _file_to_module(path, base_dir)
+    namespace = _file_to_module(rel_path)
 
     # State
     class_stack: list[tuple[str, str, int]] = []  # (name, kind, brace_depth)
@@ -213,8 +171,9 @@ def _parse_ts_file(path: Path, base_dir: Path) -> list[dict]:
     paren_depth = 0  # track () to skip multi-line parameter lists
     in_multiline_comment = False
 
+    n_lines = len(lines)
     i = 0
-    while i < len(lines):
+    while i < n_lines:
         line = lines[i]
 
         # --- Multi-line comment tracking ---
@@ -1042,52 +1001,33 @@ def _extract_field_type(stripped: str, field_name: str) -> str:
 
 # --- Brace counting ---
 
+# Strip string literals (single, double, template) including escaped quotes.
+# Order matters: escaped quotes must be consumed before quote boundaries.
+_STRING_RE = re.compile(
+    r"""'(?:[^'\\]|\\.)*'?"""   # single-quoted (possibly unterminated)
+    r'|"(?:[^"\\]|\\.)*"?'     # double-quoted
+    r"|`(?:[^`\\]|\\.)*`?"     # template literal (simplified: ignores ${})
+    r"|//.*$",                  # line comments also contain no braces
+    re.DOTALL,
+)
+
+
+_HAS_STRING_OR_COMMENT = frozenset("'\"`/")
+
+
 def _count_braces_and_parens(line: str) -> tuple[int, int]:
     """Count net brace and paren depth changes, skipping inside strings."""
-    brace_depth = 0
-    paren_depth = 0
-    in_single = False
-    in_double = False
-    in_template = False
-    escape = False
-
-    for ch in line:
-        if escape:
-            escape = False
-            continue
-        if ch == "\\":
-            escape = True
-            continue
-
-        if in_single:
-            if ch == "'":
-                in_single = False
-            continue
-        if in_double:
-            if ch == '"':
-                in_double = False
-            continue
-        if in_template:
-            if ch == "`":
-                in_template = False
-            continue
-
-        if ch == "'":
-            in_single = True
-        elif ch == '"':
-            in_double = True
-        elif ch == "`":
-            in_template = True
-        elif ch == "{":
-            brace_depth += 1
-        elif ch == "}":
-            brace_depth -= 1
-        elif ch == "(":
-            paren_depth += 1
-        elif ch == ")":
-            paren_depth -= 1
-
-    return brace_depth, paren_depth
+    # Fast path: most lines have no strings or comments — skip regex entirely
+    if _HAS_STRING_OR_COMMENT.isdisjoint(line):
+        return (
+            line.count("{") - line.count("}"),
+            line.count("(") - line.count(")"),
+        )
+    stripped = _STRING_RE.sub("", line)
+    return (
+        stripped.count("{") - stripped.count("}"),
+        stripped.count("(") - stripped.count(")"),
+    )
 
 
 # --- Visibility ---
@@ -1198,25 +1138,19 @@ def _split_params(params_str: str) -> list[str]:
 
 # --- File path to module ---
 
-def _file_to_module(path: Path, base_dir: Path) -> str:
-    """Convert file path to a dot-separated module namespace.
+def _file_to_module(rel_path: str) -> str:
+    """Convert relative file path to a dot-separated module namespace.
 
     src/services/myService.ts -> src.services.myService
     """
-    rel = path.relative_to(base_dir)
-    parts = list(rel.parts)
-
-    if not parts:
-        return ""
-
-    # Remove extension from last part
-    last = parts[-1]
+    # Strip extension
     for ext in (".tsx", ".ts"):
-        if last.endswith(ext):
-            parts[-1] = last[:-len(ext)]
+        if rel_path.endswith(ext):
+            rel_path = rel_path[:-len(ext)]
             break
 
-    # Drop index files (index.ts re-exports)
+    # Split on / and drop trailing "index"
+    parts = rel_path.split("/")
     if parts and parts[-1] == "index":
         parts = parts[:-1]
 

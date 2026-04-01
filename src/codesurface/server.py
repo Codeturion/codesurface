@@ -62,7 +62,7 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
     if language:
         parsers = [get_parser(language)]
     else:
-        parsers = get_parsers_for_project(project_path)
+        parsers = get_parsers_for_project(project_path, path_filter=_path_filter)
 
     if not parsers:
         return "No supported source files detected in project directory."
@@ -193,7 +193,7 @@ def _index_incremental(project_path: Path) -> tuple[str, bool]:
         db.delete_by_files(_conn, list(stale))
 
     # Build extension-to-parser map for dirty files
-    parsers = get_parsers_for_project(project_path)
+    parsers = get_parsers_for_project(project_path, path_filter=_path_filter)
     ext_to_parser: dict[str, object] = {}
     for parser in parsers:
         for ext in parser.file_extensions:
