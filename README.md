@@ -37,42 +37,6 @@ Point `--project` at any directory containing supported source files — a Unity
 
 Restart your AI tool and ask: *"What methods does MyService have?"*
 
-## Installing this fork
-
-This fork adds worktree filtering, `.codesurfaceignore`, `--exclude`, `--include-submodules`, and `file_path` query scoping. Install it directly from GitHub using `uv`:
-
-```bash
-uv tool install "codesurface @ git+https://github.com/michael-howell-island/codesurface.git@main"
-```
-
-Then use `codesurface` as the command instead of `uvx codesurface`:
-
-```json
-{
-  "mcpServers": {
-    "codesurface": {
-      "command": "codesurface",
-      "args": ["--project", "/path/to/your/src"]
-    }
-  }
-}
-```
-
-To update to the latest version:
-
-```bash
-uv tool upgrade codesurface
-```
-
-### Local development install
-
-To run from a local checkout (changes take effect immediately, no reinstall needed):
-
-```bash
-git clone git@github.com:michael-howell-island/codesurface.git ~/code/codesurface
-uv tool install --editable ~/code/codesurface
-```
-
 ## CLAUDE.md Snippet
 
 Add this to your project's `CLAUDE.md` (or equivalent instructions file). **This step is important.** Without it, the AI has the tools but won't know when to reach for them.
@@ -105,55 +69,6 @@ Never read a full file when you have a line number. Only fall back to Grep/Read 
 | `get_class` | Full class reference card — all public members | "BlastBoardModel" → all methods/fields/properties |
 | `get_stats` | Overview of indexed codebase | File count, record counts, namespace breakdown |
 | `reindex` | Incremental index update (mtime-based) | Only re-parses changed/new/deleted files. Also runs automatically on query misses |
-
-All search tools accept an optional `file_path` parameter to scope results to a directory prefix or exact file:
-
-```
-search("FooService", file_path="src/services/")
-get_class("IMergeService", file_path="src/services/MergeService.ts")
-```
-
-## Filtering & Exclusions
-
-### Default exclusions (always applied)
-
-- **`.worktrees/`** — git worktrees are never indexed. Pointing codesurface at a repo root with active worktrees will not cause it to hang indexing duplicate copies of your codebase.
-- **Git worktrees** — any subdirectory whose `.git` file references `/worktrees/` is skipped.
-- **Git submodules** — any subdirectory whose `.git` file references `/modules/` is skipped by default. Use `--include-submodules` to opt in.
-
-### `.codesurfaceignore`
-
-Place a `.codesurfaceignore` file in your project root. Same format as `.gitignore` — one glob per line, `#` comments supported:
-
-```
-# .codesurfaceignore
-tests/**
-**/generated/**
-vendor/
-```
-
-### `--exclude` flag
-
-Comma-separated globs for ad-hoc exclusions without editing the project:
-
-```json
-{
-  "mcpServers": {
-    "codesurface": {
-      "command": "uvx",
-      "args": ["codesurface", "--project", "/path/to/src", "--exclude", "tests/**,**/*.generated.ts"]
-    }
-  }
-}
-```
-
-### `--include-submodules`
-
-Re-include git submodules that are excluded by default:
-
-```
-uvx codesurface --project /path/to/src --include-submodules
-```
 
 ## Tested On
 
