@@ -17,6 +17,8 @@ from .base import BaseParser
 
 _SKIP_SUFFIXES = (
     ".d.ts",
+    ".test.ts", ".test.tsx",
+    ".spec.ts", ".spec.tsx",
     ".stories.ts", ".stories.tsx",
 )
 
