@@ -38,10 +38,11 @@ def _build_search_text(record: dict) -> str:
         val = record.get(field, "")
         if val:
             tokens.append(split_identifier(val))
-    # Last namespace segment (e.g. "Services" from "CampGame.Services")
+    # Last namespace segment (e.g. "Services" from "CampGame.Services",
+    # or "Utils" from "MyLib::Utils")
     ns = record.get("namespace", "")
     if ns:
-        last_part = ns.rsplit(".", 1)[-1]
+        last_part = re.split(r"[.:]", ns)[-1]
         tokens.append(split_identifier(last_part))
     return " ".join(tokens)
 
@@ -198,28 +199,42 @@ def get_by_fqn(conn: sqlite3.Connection, fqn: str) -> dict | None:
 
 
 def get_class_members(conn: sqlite3.Connection, class_name: str,
-                      file_path: str | None = None) -> list[dict]:
-    """Get all members of a class by class name."""
+                      file_path: str | None = None,
+                      namespace: str | None = None) -> list[dict]:
+    """Get all members of a class by class name, optionally filtered by file_path or namespace."""
+    clauses = ["class_name = ?"]
+    params: list[str] = [class_name]
+
+    if namespace is not None:
+        clauses.append("namespace = ?")
+        params.append(namespace)
+
     if file_path:
         if file_path.endswith("/"):
-            rows = conn.execute(
-                "SELECT * FROM api_records WHERE class_name = ? AND file_path LIKE ? "
-                "ORDER BY member_type, member_name",
-                (class_name, file_path + "%"),
-            ).fetchall()
+            clauses.append("file_path LIKE ?")
+            params.append(file_path + "%")
         else:
-            rows = conn.execute(
-                "SELECT * FROM api_records WHERE class_name = ? "
-                "AND (file_path = ? OR file_path LIKE ?) "
-                "ORDER BY member_type, member_name",
-                (class_name, file_path, file_path + "/%"),
-            ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM api_records WHERE class_name = ? ORDER BY member_type, member_name",
-            (class_name,),
-        ).fetchall()
+            clauses.append("(file_path = ? OR file_path LIKE ?)")
+            params.extend([file_path, file_path + "/%"])
+
+    sql = (
+        "SELECT * FROM api_records WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY member_type, member_name"
+    )
+    rows = conn.execute(sql, params).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_class_namespaces(conn: sqlite3.Connection, class_name: str) -> list[str]:
+    """Get all distinct namespaces that contain a class with this name."""
+    rows = conn.execute(
+        "SELECT DISTINCT namespace FROM api_records "
+        "WHERE class_name = ? AND member_type = 'type' "
+        "ORDER BY namespace",
+        (class_name,),
+    ).fetchall()
+    return [row["namespace"] for row in rows]
 
 
 def resolve_namespace(conn: sqlite3.Connection, name: str) -> list[dict]:
@@ -274,7 +289,7 @@ def _escape_fts(query: str) -> str:
       "ICommand"            → (ICommand*) OR (I Command*)
     """
     q = query
-    for ch in '."-*()':
+    for ch in '."-*():,;{}[]!@#$%^&+|\\~`':
         q = q.replace(ch, " ")
     terms = [t for t in q.split() if t]
     if not terms:
