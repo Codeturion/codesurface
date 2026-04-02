@@ -8,20 +8,12 @@ Go visibility rule: capitalized first letter = exported (public).
 Doc comments are consecutive // lines immediately before a declaration.
 """
 
+import os
 import re
+import sys
 from pathlib import Path
 
 from .base import BaseParser
-
-
-# --- Skip patterns ---
-
-_SKIP_DIRS = frozenset({
-    "vendor", "testdata", ".git", "node_modules", "third_party",
-    "examples", "example",
-})
-
-_SKIP_FILE_SUFFIX = "_test.go"
 
 # Go reserved words that can't be identifiers
 _GO_KEYWORDS = frozenset({
@@ -141,24 +133,12 @@ class GoParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".go"]
 
-    def parse_directory(self, directory: Path) -> list[dict]:
-        """Override to skip vendor/testdata/test files."""
-        records: list[dict] = []
-        for f in sorted(directory.rglob("*.go")):
-            parts = f.relative_to(directory).parts
-            # Skip dirs
-            if any(p in _SKIP_DIRS or p.startswith("_") for p in parts):
-                continue
-            # Skip test files
-            if f.name.endswith(_SKIP_FILE_SUFFIX):
-                continue
-            try:
-                records.extend(self.parse_file(f, directory))
-            except Exception as e:
-                import sys
-                print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
-                continue
-        return records
+    @property
+    def skip_suffixes(self) -> tuple[str, ...]:
+        return ("_test.go",)
+
+    def _should_skip_dir(self, name: str) -> bool:
+        return name.startswith("_")
 
     def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
         return _parse_go_file(path, base_dir)
@@ -172,11 +152,12 @@ def _is_exported(name: str) -> bool:
 def _parse_go_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single .go file and extract exported API members."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = path.relative_to(base_dir).as_posix()
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
 
     # Skip generated files (Go standard: "Code generated ... DO NOT EDIT")

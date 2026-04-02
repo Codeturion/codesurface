@@ -38,3 +38,8 @@ codesurface = "codesurface.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/codesurface"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
