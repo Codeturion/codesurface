@@ -141,7 +141,7 @@ class TypeScriptParser(BaseParser):
 
     @property
     def file_extensions(self) -> list[str]:
-        return [".ts", ".tsx"]
+        return [".ts", ".tsx", ".js", ".jsx"]
 
     @property
     def skip_suffixes(self) -> tuple[str, ...]:

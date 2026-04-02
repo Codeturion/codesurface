@@ -273,6 +273,14 @@ def _pick_primary_namespace(namespaces: list[str], members: list[dict]) -> str |
     return None
 
 
+def _is_test_file(file_path: str) -> bool:
+    """Check if a file path looks like a test file."""
+    for name in db._TEST_DIR_NAMES:
+        if file_path.startswith(f"{name}/") or f"/{name}/" in file_path:
+            return True
+    return any(pat in file_path for pat in db._TEST_FILE_PATTERNS)
+
+
 def _format_file_location(r: dict) -> str:
     """Format file path with optional line range from a record."""
     fp = r.get("file_path", "")
@@ -336,6 +344,7 @@ def search(
     n_results: int = 5,
     member_type: str | None = None,
     file_path: str | None = None,
+    include_tests: bool = False,
 ) -> str:
     """Search the indexed API by keyword.
 
@@ -348,17 +357,20 @@ def search(
         member_type: Optional filter — "type", "method", "property", "field", or "event"
         file_path: Optional path prefix or exact file to scope results
                    (e.g. "src/services/" or "src/services/foo.ts")
+        include_tests: If true, include test files in results (default false)
     """
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
     global _index_fresh
     n_results = min(max(n_results, 1), 20)
-    results = db.search(_conn, query, n=n_results, member_type=member_type, file_path=file_path)
+    results = db.search(_conn, query, n=n_results, member_type=member_type,
+                        file_path=file_path, include_tests=include_tests)
 
     if not results:
         if _auto_reindex():
-            results = db.search(_conn, query, n=n_results, member_type=member_type, file_path=file_path)
+            results = db.search(_conn, query, n=n_results, member_type=member_type,
+                                file_path=file_path, include_tests=include_tests)
         if not results:
             return f"No results found for '{query}'. Try broader search terms."
 
@@ -373,7 +385,8 @@ def search(
 
 
 @mcp.tool()
-def get_signature(name: str, file_path: str | None = None) -> str:
+def get_signature(name: str, file_path: str | None = None,
+                  include_tests: bool = False) -> str:
     """Look up the exact signature of an API member by name or FQN.
 
     Use when you need exact parameter types, return types, or method signatures
@@ -382,6 +395,7 @@ def get_signature(name: str, file_path: str | None = None) -> str:
     Args:
         name: Member name or FQN, e.g. "TryMerge", "CampGame.Services.IMergeService.TryMerge"
         file_path: Optional path prefix to scope the lookup
+        include_tests: If true, include test files in results (default false)
     """
     global _index_fresh
     if _conn is None:
@@ -391,10 +405,13 @@ def get_signature(name: str, file_path: str | None = None) -> str:
         # 1. Exact FQN match
         record = db.get_by_fqn(_conn, name)
         if record:
-            return _format_record(record)
+            # Skip test-file results unless include_tests
+            if not include_tests and _is_test_file(record.get("file_path", "")):
+                pass  # fall through to substring search
+            else:
+                return _format_record(record)
 
         # 2. Substring match (overloads or partial FQN)
-        # Build optional file_path filter
         file_clause = ""
         file_params: list = []
         if file_path:
@@ -405,9 +422,15 @@ def get_signature(name: str, file_path: str | None = None) -> str:
                 file_clause = " AND (file_path = ? OR file_path LIKE ?)"
                 file_params = [file_path, file_path + "/%"]
 
+        test_clauses: list[str] = []
+        test_params: list = []
+        if not include_tests:
+            db._add_test_exclusion(test_clauses, test_params)
+        test_clause = "".join(f" AND {c}" for c in test_clauses)
+
         rows = _conn.execute(
-            f"SELECT * FROM api_records WHERE fqn LIKE ?{file_clause} ORDER BY fqn",
-            (f"%{name}%", *file_params),
+            f"SELECT * FROM api_records WHERE fqn LIKE ?{file_clause}{test_clause} ORDER BY fqn",
+            (f"%{name}%", *file_params, *test_params),
         ).fetchall()
         if rows:
             parts = [f"Found {len(rows)} match(es) for '{name}':\n"]
@@ -419,7 +442,7 @@ def get_signature(name: str, file_path: str | None = None) -> str:
             return "\n".join(parts)
 
         # 3. FTS fallback
-        results = db.search(_conn, name, n=5, file_path=file_path)
+        results = db.search(_conn, name, n=5, file_path=file_path, include_tests=include_tests)
         if results:
             parts = [f"No exact match for '{name}'. Did you mean:\n"]
             for r in results:
@@ -440,7 +463,8 @@ def get_signature(name: str, file_path: str | None = None) -> str:
 
 
 @mcp.tool()
-def get_class(class_name: str, file_path: str | None = None) -> str:
+def get_class(class_name: str, file_path: str | None = None,
+              include_tests: bool = False) -> str:
     """Get a complete reference card for a class — all public members.
 
     Shows every method, property, field, and event with signatures.
@@ -449,6 +473,7 @@ def get_class(class_name: str, file_path: str | None = None) -> str:
     Args:
         class_name: Class name, e.g. "BlastBoardModel", "IMergeService", "CampGridService"
         file_path: Optional path prefix to scope the lookup
+        include_tests: If true, include test files in results (default false)
     """
     global _index_fresh
     if _conn is None:
@@ -463,13 +488,16 @@ def get_class(class_name: str, file_path: str | None = None) -> str:
     else:
         short_name = re.split(r"[.:]", class_name)[-1]
 
-    members = db.get_class_members(_conn, short_name, file_path=file_path, namespace=ns_filter)
+    members = db.get_class_members(_conn, short_name, file_path=file_path,
+                                   namespace=ns_filter, include_tests=include_tests)
 
     if not members:
         if _auto_reindex():
-            members = db.get_class_members(_conn, short_name, file_path=file_path, namespace=ns_filter)
+            members = db.get_class_members(_conn, short_name, file_path=file_path,
+                                           namespace=ns_filter, include_tests=include_tests)
         if not members:
-            results = db.search(_conn, class_name, n=5, member_type="type", file_path=file_path)
+            results = db.search(_conn, class_name, n=5, member_type="type",
+                                file_path=file_path, include_tests=include_tests)
             if results:
                 parts = [f"No class '{class_name}' found. Did you mean:\n"]
                 for r in results:
