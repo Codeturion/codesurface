@@ -28,6 +28,23 @@ _project_path: Path | None = None
 _file_mtimes: dict[str, float] = {}  # rel_path → mtime
 _index_fresh: bool = True  # True = checked for changes since last hit; skip auto-reindex
 _path_filter: PathFilter | None = None
+_output_format: str = "text"
+
+
+def _json_mode() -> bool:
+    return _output_format == "json"
+
+
+def _clean_record(r: dict) -> dict:
+    """Strip internal fields and parse params_json for JSON output."""
+    out = {k: v for k, v in r.items() if k not in ("search_text", "rank")}
+    params_raw = out.get("params_json")
+    if isinstance(params_raw, str):
+        try:
+            out["params_json"] = json.loads(params_raw)
+        except (json.JSONDecodeError, TypeError):
+            out["params_json"] = []
+    return out
 
 
 def _count_files(
@@ -372,9 +389,19 @@ def search(
             results = db.search(_conn, query, n=n_results, member_type=member_type,
                                 file_path=file_path, include_tests=include_tests)
         if not results:
+            if _json_mode():
+                return json.dumps({"results": [], "query": query, "count": 0})
             return f"No results found for '{query}'. Try broader search terms."
 
     _index_fresh = False
+
+    if _json_mode():
+        return json.dumps({
+            "results": [_clean_record(dict(r)) for r in results],
+            "query": query,
+            "count": len(results),
+        })
+
     parts = [f"Found {len(results)} result(s) for '{query}':\n"]
     for i, r in enumerate(results, 1):
         parts.append(f"--- Result {i} ---")
@@ -401,15 +428,16 @@ def get_signature(name: str, file_path: str | None = None,
     if _conn is None:
         return "No codebase indexed. Start the server with --project <path>."
 
-    def _lookup() -> str | None:
+    def _lookup() -> tuple[list[dict], list[dict]]:
+        """Return (results, suggestions). Results are exact/substring hits,
+        suggestions are fuzzy FTS fallbacks."""
         # 1. Exact FQN match
         record = db.get_by_fqn(_conn, name)
         if record:
-            # Skip test-file results unless include_tests
             if not include_tests and _is_test_file(record.get("file_path", "")):
                 pass  # fall through to substring search
             else:
-                return _format_record(record)
+                return [dict(record)], []
 
         # 2. Substring match (overloads or partial FQN)
         file_clause = ""
@@ -433,33 +461,43 @@ def get_signature(name: str, file_path: str | None = None,
             (f"%{name}%", *file_params, *test_params),
         ).fetchall()
         if rows:
-            parts = [f"Found {len(rows)} match(es) for '{name}':\n"]
-            for r in rows[:10]:
-                parts.append(_format_record(dict(r)))
-                parts.append("")
-            if len(rows) > 10:
-                parts.append(f"... and {len(rows) - 10} more")
-            return "\n".join(parts)
+            return [dict(r) for r in rows[:10]], []
 
-        # 3. FTS fallback
-        results = db.search(_conn, name, n=5, file_path=file_path, include_tests=include_tests)
-        if results:
-            parts = [f"No exact match for '{name}'. Did you mean:\n"]
-            for r in results:
-                parts.append(_format_record(r))
-                parts.append("")
-            return "\n".join(parts)
+        # 3. FTS fallback — these are suggestions, not direct hits
+        fts_results = db.search(_conn, name, n=5, file_path=file_path, include_tests=include_tests)
+        return [], fts_results
 
-        return None
+    results, suggestions = _lookup()
+    if not results and not suggestions and _auto_reindex():
+        results, suggestions = _lookup()
 
-    result = _lookup()
-    if result is None and _auto_reindex():
-        result = _lookup()
+    if not results and not suggestions:
+        if _json_mode():
+            return json.dumps({"results": [], "query": name, "count": 0, "suggestions": []})
+        return f"No results found for '{name}'."
 
-    if result:
-        _index_fresh = False
-        return result
-    return f"No results found for '{name}'."
+    _index_fresh = False
+
+    if _json_mode():
+        return json.dumps({
+            "results": [_clean_record(r) for r in results],
+            "query": name,
+            "count": len(results),
+            "suggestions": [_clean_record(r) for r in suggestions],
+        })
+
+    # Text mode formatting
+    if results:
+        parts = [f"Found {len(results)} match(es) for '{name}':\n"]
+        for r in results:
+            parts.append(_format_record(r))
+            parts.append("")
+    else:
+        parts = [f"No exact match for '{name}'. Did you mean:\n"]
+        for r in suggestions:
+            parts.append(_format_record(r))
+            parts.append("")
+    return "\n".join(parts)
 
 
 @mcp.tool()
@@ -498,6 +536,15 @@ def get_class(class_name: str, file_path: str | None = None,
         if not members:
             results = db.search(_conn, class_name, n=5, member_type="type",
                                 file_path=file_path, include_tests=include_tests)
+            if _json_mode():
+                return json.dumps({
+                    "class_name": class_name,
+                    "namespace": None,
+                    "file": None,
+                    "members": [],
+                    "count": 0,
+                    "suggestions": [_clean_record(dict(r)) for r in results],
+                })
             if results:
                 parts = [f"No class '{class_name}' found. Did you mean:\n"]
                 for r in results:
@@ -518,6 +565,18 @@ def get_class(class_name: str, file_path: str | None = None,
     _index_fresh = False
     type_record = next((m for m in members if m["member_type"] == "type"), None)
     ns = type_record["namespace"] if type_record else members[0].get("namespace", "")
+
+    if _json_mode():
+        file_loc = ""
+        if type_record:
+            file_loc = _format_file_location(type_record)
+        return json.dumps({
+            "class_name": short_name,
+            "namespace": ns,
+            "file": file_loc,
+            "members": [_clean_record(dict(m)) for m in members],
+            "count": len(members),
+        })
 
     parts = [f"Class: {short_name}"]
     if ns:
@@ -588,6 +647,15 @@ def get_stats() -> str:
     _index_fresh = False
     stats = db.get_stats(_conn)
 
+    if _json_mode():
+        # Add top namespaces to the stats dict
+        rows = _conn.execute(
+            "SELECT namespace, COUNT(*) as cnt FROM api_records "
+            "WHERE namespace != '' GROUP BY namespace ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        stats["top_namespaces"] = {r["namespace"]: r["cnt"] for r in rows}
+        return json.dumps(stats)
+
     parts = [
         "Project API Index Stats:",
         f"  Files indexed: {stats.get('files', 0)}",
@@ -628,7 +696,11 @@ def reindex() -> str:
         return f"Project path not found: {_project_path}"
 
     _index_fresh = True
-    msg, _changed = _index_incremental(_project_path)
+    msg, changed = _index_incremental(_project_path)
+
+    if _json_mode():
+        return json.dumps({"message": msg, "changed": changed})
+
     return msg
 
 
@@ -644,9 +716,12 @@ def main():
                              "(e.g. 'tests/**,generated/**')")
     parser.add_argument("--include-submodules", action="store_true", default=False,
                         help="Include git submodules in indexing (excluded by default)")
+    parser.add_argument("--output", choices=["text", "json"], default="text",
+                        help="Output format for tool responses (default: text)")
     args, remaining = parser.parse_known_args()
 
-    global _project_path, _path_filter
+    global _project_path, _path_filter, _output_format
+    _output_format = args.output
 
     exclude_globs = [g.strip() for g in args.exclude.split(",")] if args.exclude else []
 
