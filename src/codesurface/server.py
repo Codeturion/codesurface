@@ -35,23 +35,10 @@ def _count_files(
     parsers: list,
     path_filter: "PathFilter | None",
 ) -> int:
-    """Quick pre-scan: count source files that will be parsed."""
-    extensions = set()
-    for p in parsers:
-        extensions.update(p.file_extensions)
-    exts = tuple(extensions)
+    """Pre-scan: count source files using each parser's full filter rules."""
     total = 0
-    for root, dirs, files in os.walk(project_path):
-        root_path = Path(root)
-        if path_filter is not None:
-            dirs[:] = [d for d in dirs if not path_filter.is_dir_excluded(root_path / d)]
-        for filename in files:
-            if not filename.endswith(exts):
-                continue
-            f = root_path / filename
-            if path_filter is not None and path_filter.is_file_excluded(f):
-                continue
-            total += 1
+    for parser in parsers:
+        total += len(parser._walk_files(project_path, path_filter))
     return total
 
 
@@ -74,6 +61,7 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
     parsed = [0]
     last_pct = [0.0]
     last_time = [t0]
+    new_mtimes: dict[str, float] = {}
 
     # Emit the 0% line immediately
     print(
@@ -84,6 +72,12 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
 
     def on_progress(f: Path) -> None:
         parsed[0] += 1
+        # Snapshot mtime while we're at it (avoids a third walk)
+        rel = str(f.relative_to(project_path)).replace("\\", "/")
+        try:
+            new_mtimes[rel] = f.stat().st_mtime
+        except OSError:
+            pass
         now = time.perf_counter()
         pct = parsed[0] / max(total, 1)
         elapsed = now - t0
@@ -107,26 +101,7 @@ def _index_full(project_path: Path, language: str | None = None) -> str:
     _conn = db.create_memory_db(records)
     db_time = time.perf_counter() - t1
 
-    # Snapshot mtimes for all registered extensions (pruning excluded dirs)
-    extensions = set()
-    for parser in parsers:
-        extensions.update(parser.file_extensions)
-    exts = tuple(extensions)
-
-    _file_mtimes = {}
-    for root, dirs, files in os.walk(project_path):
-        root_path = Path(root)
-        if _path_filter is not None:
-            dirs[:] = [d for d in dirs if not _path_filter.is_dir_excluded(root_path / d)]
-        for filename in files:
-            if not filename.endswith(exts):
-                continue
-            f = root_path / filename
-            rel = str(f.relative_to(project_path)).replace("\\", "/")
-            try:
-                _file_mtimes[rel] = f.stat().st_mtime
-            except OSError:
-                pass
+    _file_mtimes = new_mtimes
 
     stats = db.get_stats(_conn)
     langs = ", ".join(type(p).__name__.replace("Parser", "") for p in parsers)

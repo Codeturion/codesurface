@@ -44,23 +44,21 @@ class BaseParser(ABC):
         """Extra per-parser directory skip logic. Override if needed."""
         return False
 
-    def parse_directory(
+    def _walk_files(
         self, directory: Path, path_filter: "PathFilter | None" = None,
-        on_progress: "Callable[[Path], None] | None" = None,
-    ) -> list[dict]:
-        """Recursively parse all matching files under *directory*.
+    ) -> list[str]:
+        """Collect all file paths this parser would process.
 
-        Uses os.walk with str paths to avoid pathlib overhead.
-        PathFilter handles all default exclusions (node_modules, .git, etc.).
+        Returns absolute path strings, applying all filters (PathFilter,
+        skip_suffixes, skip_files, _should_skip_dir).
         """
         exts = tuple(self.file_extensions)
         skip_suf = self.skip_suffixes
         skip_fn = self.skip_files
         dir_str = str(directory)
-        records: list[dict] = []
+        result: list[str] = []
 
         for root, dirs, files in os.walk(dir_str):
-            # Prune excluded directories IN PLACE so os.walk skips them
             if path_filter is not None:
                 dirs[:] = [
                     d for d in dirs
@@ -86,13 +84,30 @@ class BaseParser(ABC):
                 ):
                     continue
 
-                f = Path(filepath)
-                try:
-                    records.extend(self.parse_file(f, directory))
-                except Exception as e:
-                    print(f"codesurface: failed to parse {filepath}: {e}", file=sys.stderr)
-                finally:
-                    if on_progress is not None:
-                        on_progress(f)
+                result.append(filepath)
+
+        return result
+
+    def parse_directory(
+        self, directory: Path, path_filter: "PathFilter | None" = None,
+        on_progress: "Callable[[Path], None] | None" = None,
+    ) -> list[dict]:
+        """Recursively parse all matching files under *directory*.
+
+        Uses os.walk with str paths to avoid pathlib overhead.
+        PathFilter handles all default exclusions (node_modules, .git, etc.).
+        """
+        file_paths = self._walk_files(directory, path_filter)
+        records: list[dict] = []
+
+        for filepath in file_paths:
+            f = Path(filepath)
+            try:
+                records.extend(self.parse_file(f, directory))
+            except Exception as e:
+                print(f"codesurface: failed to parse {filepath}: {e}", file=sys.stderr)
+            finally:
+                if on_progress is not None:
+                    on_progress(f)
 
         return records
