@@ -143,11 +143,14 @@ def delete_by_files(conn: sqlite3.Connection, file_paths: list[str]) -> int:
 
 
 def search(conn: sqlite3.Connection, query: str, n: int = 10,
-           member_type: str | None = None) -> list[dict]:
+           member_type: str | None = None,
+           file_path: str | None = None) -> list[dict]:
     """Full-text search with BM25 ranking + PascalCase-aware matching.
 
     Column weights: member_name (10x) > class_name (5x) > search_text (4x) > signature (3x) > fqn/summary (1x)
     Type bonus: class/struct/enum defs rank higher than same-named members.
+
+    file_path: optional path prefix or exact file to scope results.
     """
     clean = _escape_fts(query)
     if not clean.strip():
@@ -157,27 +160,33 @@ def search(conn: sqlite3.Connection, query: str, n: int = 10,
     ranking = """bm25(api_fts, 1.0, 5.0, 10.0, 0.5, 3.0, 4.0)
                 + CASE WHEN r.member_type = 'type' THEN -1.0 ELSE 0.0 END"""
 
-    if member_type:
-        sql = f"""
-            SELECT r.*, {ranking} AS rank
-            FROM api_fts f
-            JOIN api_records r ON r.rowid = f.rowid
-            WHERE api_fts MATCH ? AND r.member_type = ?
-            ORDER BY rank
-            LIMIT ?
-        """
-        rows = conn.execute(sql, (clean, member_type, n)).fetchall()
-    else:
-        sql = f"""
-            SELECT r.*, {ranking} AS rank
-            FROM api_fts f
-            JOIN api_records r ON r.rowid = f.rowid
-            WHERE api_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-        """
-        rows = conn.execute(sql, (clean, n)).fetchall()
+    conditions = ["api_fts MATCH ?"]
+    params: list = [clean]
 
+    if member_type:
+        conditions.append("r.member_type = ?")
+        params.append(member_type)
+
+    if file_path:
+        if file_path.endswith("/"):
+            conditions.append("r.file_path LIKE ?")
+            params.append(file_path + "%")
+        else:
+            conditions.append("(r.file_path = ? OR r.file_path LIKE ?)")
+            params.extend([file_path, file_path + "/%"])
+
+    where = " AND ".join(conditions)
+    params.append(n)
+
+    sql = f"""
+        SELECT r.*, {ranking} AS rank
+        FROM api_fts f
+        JOIN api_records r ON r.rowid = f.rowid
+        WHERE {where}
+        ORDER BY rank
+        LIMIT ?
+    """
+    rows = conn.execute(sql, params).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -190,19 +199,29 @@ def get_by_fqn(conn: sqlite3.Connection, fqn: str) -> dict | None:
 
 
 def get_class_members(conn: sqlite3.Connection, class_name: str,
-                      namespace: str | None = None) -> list[dict]:
-    """Get all members of a class by class name, optionally filtered by namespace."""
+                      namespace: str | None = None,
+                      file_path: str | None = None) -> list[dict]:
+    """Get all members of a class by class name, optionally filtered by namespace and/or file_path."""
+    conditions = ["class_name = ?"]
+    params: list = [class_name]
+
     if namespace is not None:
-        rows = conn.execute(
-            "SELECT * FROM api_records WHERE class_name = ? AND namespace = ? "
-            "ORDER BY member_type, member_name",
-            (class_name, namespace),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM api_records WHERE class_name = ? ORDER BY member_type, member_name",
-            (class_name,),
-        ).fetchall()
+        conditions.append("namespace = ?")
+        params.append(namespace)
+
+    if file_path:
+        if file_path.endswith("/"):
+            conditions.append("file_path LIKE ?")
+            params.append(file_path + "%")
+        else:
+            conditions.append("(file_path = ? OR file_path LIKE ?)")
+            params.extend([file_path, file_path + "/%"])
+
+    where = " AND ".join(conditions)
+    rows = conn.execute(
+        f"SELECT * FROM api_records WHERE {where} ORDER BY member_type, member_name",
+        params,
+    ).fetchall()
     return [dict(row) for row in rows]
 
 
