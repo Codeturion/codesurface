@@ -143,11 +143,16 @@ def delete_by_files(conn: sqlite3.Connection, file_paths: list[str]) -> int:
 
 
 def search(conn: sqlite3.Connection, query: str, n: int = 10,
-           member_type: str | None = None) -> list[dict]:
+           member_type: str | None = None,
+           file_path: str | None = None,
+           include_tests: bool = False) -> list[dict]:
     """Full-text search with BM25 ranking + PascalCase-aware matching.
 
     Column weights: member_name (10x) > class_name (5x) > search_text (4x) > signature (3x) > fqn/summary (1x)
     Type bonus: class/struct/enum defs rank higher than same-named members.
+
+    file_path: optional path prefix or exact file to scope results.
+    include_tests: if False (default), exclude test files from results.
     """
     clean = _escape_fts(query)
     if not clean.strip():
@@ -157,27 +162,36 @@ def search(conn: sqlite3.Connection, query: str, n: int = 10,
     ranking = """bm25(api_fts, 1.0, 5.0, 10.0, 0.5, 3.0, 4.0)
                 + CASE WHEN r.member_type = 'type' THEN -1.0 ELSE 0.0 END"""
 
-    if member_type:
-        sql = f"""
-            SELECT r.*, {ranking} AS rank
-            FROM api_fts f
-            JOIN api_records r ON r.rowid = f.rowid
-            WHERE api_fts MATCH ? AND r.member_type = ?
-            ORDER BY rank
-            LIMIT ?
-        """
-        rows = conn.execute(sql, (clean, member_type, n)).fetchall()
-    else:
-        sql = f"""
-            SELECT r.*, {ranking} AS rank
-            FROM api_fts f
-            JOIN api_records r ON r.rowid = f.rowid
-            WHERE api_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-        """
-        rows = conn.execute(sql, (clean, n)).fetchall()
+    conditions = ["api_fts MATCH ?"]
+    params: list = [clean]
 
+    if member_type:
+        conditions.append("r.member_type = ?")
+        params.append(member_type)
+
+    if file_path:
+        if file_path.endswith("/"):
+            conditions.append("r.file_path LIKE ?")
+            params.append(file_path + "%")
+        else:
+            conditions.append("(r.file_path = ? OR r.file_path LIKE ?)")
+            params.extend([file_path, file_path + "/%"])
+
+    if not include_tests:
+        _add_test_exclusion(conditions, params, alias="r.")
+
+    where = " AND ".join(conditions)
+    params.append(n)
+
+    sql = f"""
+        SELECT r.*, {ranking} AS rank
+        FROM api_fts f
+        JOIN api_records r ON r.rowid = f.rowid
+        WHERE {where}
+        ORDER BY rank
+        LIMIT ?
+    """
+    rows = conn.execute(sql, params).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -190,19 +204,34 @@ def get_by_fqn(conn: sqlite3.Connection, fqn: str) -> dict | None:
 
 
 def get_class_members(conn: sqlite3.Connection, class_name: str,
-                      namespace: str | None = None) -> list[dict]:
-    """Get all members of a class by class name, optionally filtered by namespace."""
+                      file_path: str | None = None,
+                      namespace: str | None = None,
+                      include_tests: bool = False) -> list[dict]:
+    """Get all members of a class by class name, optionally filtered by file_path or namespace."""
+    clauses = ["class_name = ?"]
+    params: list[str] = [class_name]
+
     if namespace is not None:
-        rows = conn.execute(
-            "SELECT * FROM api_records WHERE class_name = ? AND namespace = ? "
-            "ORDER BY member_type, member_name",
-            (class_name, namespace),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM api_records WHERE class_name = ? ORDER BY member_type, member_name",
-            (class_name,),
-        ).fetchall()
+        clauses.append("namespace = ?")
+        params.append(namespace)
+
+    if file_path:
+        if file_path.endswith("/"):
+            clauses.append("file_path LIKE ?")
+            params.append(file_path + "%")
+        else:
+            clauses.append("(file_path = ? OR file_path LIKE ?)")
+            params.extend([file_path, file_path + "/%"])
+
+    if not include_tests:
+        _add_test_exclusion(clauses, params)
+
+    sql = (
+        "SELECT * FROM api_records WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY member_type, member_name"
+    )
+    rows = conn.execute(sql, params).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -215,6 +244,46 @@ def get_class_namespaces(conn: sqlite3.Connection, class_name: str) -> list[str]
         (class_name,),
     ).fetchall()
     return [row["namespace"] for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Test-file exclusion helpers
+# ---------------------------------------------------------------------------
+
+# Patterns that identify test files. Applied to the relative file_path stored in DB.
+# Directory patterns match anywhere in the path; filename patterns use specific LIKE forms.
+# Directory names that indicate test code.
+_TEST_DIR_NAMES = ("__tests__", "__test__", "tests", "test")
+
+# Filename patterns: match within the basename of the file path.
+# .test. and .spec. → e.g. Button.test.tsx, utils.spec.js
+# _test. → e.g. calculator_test.py, foo_test.go
+# /test_ → e.g. test_calculator.py (slash ensures it's the filename start)
+_TEST_FILE_PATTERNS = (
+    ".test.",   # foo.test.ts
+    ".spec.",   # foo.spec.ts
+    "_test.",   # foo_test.py, foo_test.go
+    "/test_",   # test_foo.py
+)
+
+
+def _add_test_exclusion(clauses: list[str], params: list, *, alias: str = "") -> None:
+    """Append SQL clauses that exclude test files.
+
+    alias should be e.g. "r." when querying through a join, or "" for direct table access.
+    Handles both root-relative paths (tests/foo.py) and nested (src/tests/foo.py).
+    """
+    col = f"{alias}file_path"
+    for name in _TEST_DIR_NAMES:
+        # Nested: src/tests/foo.py
+        clauses.append(f"{col} NOT LIKE ?")
+        params.append(f"%/{name}/%")
+        # Root-relative: tests/foo.py
+        clauses.append(f"{col} NOT LIKE ?")
+        params.append(f"{name}/%")
+    for pat in _TEST_FILE_PATTERNS:
+        clauses.append(f"{col} NOT LIKE ?")
+        params.append(f"%{pat}%")
 
 
 def resolve_namespace(conn: sqlite3.Connection, name: str) -> list[dict]:

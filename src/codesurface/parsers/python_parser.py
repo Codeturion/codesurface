@@ -5,19 +5,12 @@ functions, methods, properties, and module-level constants.
 Docstrings are extracted as summaries.
 """
 
+import os
 import re
+import sys
 from pathlib import Path
 
 from .base import BaseParser
-
-
-# --- Skip patterns ---
-
-_SKIP_DIRS = frozenset({
-    "__pycache__", ".git", ".venv", "venv", "env",
-    "node_modules", ".tox", ".mypy_cache", ".pytest_cache",
-    "dist", "build", "egg-info",
-})
 
 _SKIP_FILES = frozenset({
     "setup.py", "conftest.py",
@@ -73,25 +66,12 @@ class PythonParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".py"]
 
-    def parse_directory(self, directory: Path) -> list[dict]:
-        """Override to skip common non-source directories."""
-        records = []
-        for f in sorted(directory.rglob("*.py")):
-            # Skip files in excluded directories
-            parts = f.relative_to(directory).parts
-            if any(p in _SKIP_DIRS for p in parts):
-                continue
-            if any(p.endswith(".egg-info") for p in parts):
-                continue
-            if f.name in _SKIP_FILES:
-                continue
-            try:
-                records.extend(self.parse_file(f, directory))
-            except Exception as e:
-                import sys
-                print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
-                continue
-        return records
+    @property
+    def skip_files(self) -> frozenset[str]:
+        return _SKIP_FILES
+
+    def _should_skip_dir(self, name: str) -> bool:
+        return name.endswith(".egg-info")
 
     def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
         return _parse_py_file(path, base_dir)
@@ -100,11 +80,12 @@ class PythonParser(BaseParser):
 def _parse_py_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single .py file and extract public API members."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
     records = []
 
@@ -690,8 +671,8 @@ def _file_to_module(path: Path, base_dir: Path) -> str:
 
     Walks up from the file looking for __init__.py to determine package boundaries.
     """
-    rel = path.relative_to(base_dir)
-    parts = list(rel.parts)
+    rel = os.path.relpath(path, base_dir).replace("\\", "/")
+    parts = rel.split("/")
 
     # Remove .py extension from last part
     if parts and parts[-1].endswith(".py"):
