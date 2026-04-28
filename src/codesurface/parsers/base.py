@@ -64,7 +64,7 @@ class BaseParser(ABC):
                     d for d in dirs
                     if not path_filter.is_dir_excluded_name(d)
                     and not self._should_skip_dir(d)
-                    and not path_filter.is_dir_excluded(Path(os.path.join(root, d)))
+                    and not path_filter.is_dir_excluded_git(root, d)
                 ]
             else:
                 dirs[:] = [d for d in dirs if not self._should_skip_dir(d)]

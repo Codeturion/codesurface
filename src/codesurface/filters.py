@@ -6,6 +6,7 @@ and user-configured exclusions (.codesurfaceignore, --exclude CLI flag).
 from __future__ import annotations
 
 import fnmatch
+import os
 from pathlib import Path
 
 # Directories excluded by name in every project — vendored deps, build
@@ -33,10 +34,16 @@ _DEFAULT_EXCLUDED_DIRS: frozenset[str] = frozenset({
 
 def _read_git_file(path: Path) -> str | None:
     """Read .git FILE content if present. Returns None if .git is a directory."""
-    git = path / ".git"
-    if git.is_file():
+    return _read_git_file_str(str(path))
+
+
+def _read_git_file_str(dir_path: str) -> str | None:
+    """String-path version of _read_git_file. Avoids Path object churn in walks."""
+    git = os.path.join(dir_path, ".git")
+    if os.path.isfile(git):
         try:
-            return git.read_text().strip()
+            with open(git, "r", encoding="utf-8") as f:
+                return f.read().strip()
         except OSError:
             return None
     return None
@@ -95,29 +102,42 @@ class PathFilter:
     def is_dir_excluded(self, path: Path) -> bool:
         """Return True if this directory should be skipped entirely."""
         name = path.name
-
         if name in _DEFAULT_EXCLUDED_DIRS:
             return True
+        return self._git_file_excludes(str(path))
 
-        # .git FILE detection (worktrees / submodules)
-        git_content = _read_git_file(path)
-        if git_content is not None:
-            if _is_git_worktree(git_content):
-                return True
-            if _is_git_submodule(git_content) and not self._include_submodules:
-                return True
+    def is_dir_excluded_git(self, root: str, name: str) -> bool:
+        """String-path companion to is_dir_excluded for the .git FILE check.
 
+        Caller is expected to have already filtered by is_dir_excluded_name,
+        so this only handles worktree/submodule detection. Avoids Path()
+        construction and an extra str() round-trip in tight walk loops.
+        """
+        return self._git_file_excludes(os.path.join(root, name))
+
+    def _git_file_excludes(self, dir_path: str) -> bool:
+        git_content = _read_git_file_str(dir_path)
+        if git_content is None:
+            return False
+        if _is_git_worktree(git_content):
+            return True
+        if _is_git_submodule(git_content) and not self._include_submodules:
+            return True
         return False
 
     def is_file_excluded(self, path: Path) -> bool:
-        """Return True if this file matches any user exclusion glob."""
+        """Return True if this file matches any user exclusion glob.
+
+        Path-based variant retained for callers that already have a Path.
+        Hot walk loops should prefer is_file_excluded_rel with a string slice.
+        """
         if not self._globs:
             return False
         try:
             rel = str(path.relative_to(self._root)).replace("\\", "/")
         except ValueError:
             return False
-        return any(fnmatch.fnmatch(rel, g) for g in self._globs)
+        return self.is_file_excluded_rel(rel)
 
     def is_file_excluded_rel(self, rel_path: str) -> bool:
         """Return True if a relative path matches any user exclusion glob."""

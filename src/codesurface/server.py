@@ -127,21 +127,27 @@ def _index_incremental(project_path: Path) -> tuple[str, bool]:
     # Collect all registered extensions
     exts = tuple(all_extensions())
 
-    # Scan current files, pruning excluded directories during walk
+    # Scan current files, pruning excluded directories during walk.
+    # All str-based to avoid Path overhead at scale.
     current: dict[str, float] = {}
-    for root, dirs, files in os.walk(project_path):
-        root_path = Path(root)
+    project_str = str(project_path)
+    prefix_len = len(project_str) + 1  # account for trailing path separator
+    for root, dirs, files in os.walk(project_str):
         if _path_filter is not None:
-            dirs[:] = [d for d in dirs if not _path_filter.is_dir_excluded(root_path / d)]
+            dirs[:] = [
+                d for d in dirs
+                if not _path_filter.is_dir_excluded_name(d)
+                and not _path_filter.is_dir_excluded_git(root, d)
+            ]
         for filename in files:
             if not filename.endswith(exts):
                 continue
-            f = root_path / filename
-            if _path_filter is not None and _path_filter.is_file_excluded(f):
+            filepath = os.path.join(root, filename)
+            rel = filepath[prefix_len:].replace("\\", "/")
+            if _path_filter is not None and _path_filter.is_file_excluded_rel(rel):
                 continue
-            rel = str(f.relative_to(project_path)).replace("\\", "/")
             try:
-                current[rel] = f.stat().st_mtime
+                current[rel] = os.stat(filepath).st_mtime
             except OSError:
                 pass
 

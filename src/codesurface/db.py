@@ -142,6 +142,16 @@ def delete_by_files(conn: sqlite3.Connection, file_paths: list[str]) -> int:
     return cursor.rowcount
 
 
+def _file_path_condition(file_path: str, column: str = "file_path") -> tuple[str, list]:
+    """Build a SQL fragment + params for filtering by file_path.
+
+    Trailing '/' means prefix match; otherwise exact match or directory prefix.
+    """
+    if file_path.endswith("/"):
+        return f"{column} LIKE ?", [file_path + "%"]
+    return f"({column} = ? OR {column} LIKE ?)", [file_path, file_path + "/%"]
+
+
 def search(conn: sqlite3.Connection, query: str, n: int = 10,
            member_type: str | None = None,
            file_path: str | None = None) -> list[dict]:
@@ -168,12 +178,9 @@ def search(conn: sqlite3.Connection, query: str, n: int = 10,
         params.append(member_type)
 
     if file_path:
-        if file_path.endswith("/"):
-            conditions.append("r.file_path LIKE ?")
-            params.append(file_path + "%")
-        else:
-            conditions.append("(r.file_path = ? OR r.file_path LIKE ?)")
-            params.extend([file_path, file_path + "/%"])
+        frag, fp_params = _file_path_condition(file_path, "r.file_path")
+        conditions.append(frag)
+        params.extend(fp_params)
 
     where = " AND ".join(conditions)
     params.append(n)
@@ -210,12 +217,9 @@ def get_class_members(conn: sqlite3.Connection, class_name: str,
         params.append(namespace)
 
     if file_path:
-        if file_path.endswith("/"):
-            conditions.append("file_path LIKE ?")
-            params.append(file_path + "%")
-        else:
-            conditions.append("(file_path = ? OR file_path LIKE ?)")
-            params.extend([file_path, file_path + "/%"])
+        frag, fp_params = _file_path_condition(file_path)
+        conditions.append(frag)
+        params.extend(fp_params)
 
     where = " AND ".join(conditions)
     rows = conn.execute(
