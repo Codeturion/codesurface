@@ -12,7 +12,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import db
 from .filters import PathFilter
-from .parsers import all_extensions, detect_languages, get_parser, get_parsers_for_project
+from .parsers import detect_languages, get_parser, get_parsers_for_project
 
 mcp = FastMCP(
     "codesurface",
@@ -124,28 +124,22 @@ def _index_incremental(project_path: Path) -> tuple[str, bool]:
 
     t0 = time.perf_counter()
 
-    # Collect all registered extensions
-    exts = tuple(all_extensions())
+    # Use per-parser walks so the same skip rules as _index_full apply
+    # (skip_suffixes, skip_files, _should_skip_dir). This keeps _file_mtimes
+    # in sync with what actually gets parsed.
+    parsers = get_parsers_for_project(project_path, path_filter=_path_filter)
+    ext_to_parser: dict[str, object] = {}
+    for parser in parsers:
+        for ext in parser.file_extensions:
+            ext_to_parser[ext] = parser
 
-    # Scan current files, pruning excluded directories during walk.
-    # All str-based to avoid Path overhead at scale.
-    current: dict[str, float] = {}
     project_str = str(project_path)
     prefix_len = len(project_str) + 1  # account for trailing path separator
-    for root, dirs, files in os.walk(project_str):
-        if _path_filter is not None:
-            dirs[:] = [
-                d for d in dirs
-                if not _path_filter.is_dir_excluded_name(d)
-                and not _path_filter.is_dir_excluded_git(root, d)
-            ]
-        for filename in files:
-            if not filename.endswith(exts):
-                continue
-            filepath = os.path.join(root, filename)
+
+    current: dict[str, float] = {}
+    for parser in parsers:
+        for filepath in parser._walk_files(project_path, _path_filter):
             rel = filepath[prefix_len:].replace("\\", "/")
-            if _path_filter is not None and _path_filter.is_file_excluded_rel(rel):
-                continue
             try:
                 current[rel] = os.stat(filepath).st_mtime
             except OSError:
@@ -173,13 +167,6 @@ def _index_incremental(project_path: Path) -> tuple[str, bool]:
     # Remove stale records
     if stale:
         db.delete_by_files(_conn, list(stale))
-
-    # Build extension-to-parser map for dirty files
-    parsers = get_parsers_for_project(project_path, path_filter=_path_filter)
-    ext_to_parser: dict[str, object] = {}
-    for parser in parsers:
-        for ext in parser.file_extensions:
-            ext_to_parser[ext] = parser
 
     # Parse dirty files
     new_records = []

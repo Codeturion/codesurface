@@ -34,6 +34,33 @@ def test_count_files_prunes_excluded_dirs(tmp_path):
     assert _count_files(tmp_path, parsers, path_filter=pf) == 1
 
 
+def test_incremental_walk_applies_parser_skip_suffixes(tmp_path):
+    """_index_incremental must apply per-parser skip_suffixes so _file_mtimes
+    only tracks files the parser actually parses. Regression check: previously
+    used a global os.walk that skipped only path_filter, so .test.ts/.spec.ts
+    files leaked into _file_mtimes.
+    """
+    from codesurface import server
+    from codesurface.filters import PathFilter
+
+    (tmp_path / "foo.ts").write_text("export const x = 1;")
+    (tmp_path / "foo.test.ts").write_text("test('x', () => {});")
+
+    server._conn = None
+    server._project_path = tmp_path
+    server._path_filter = PathFilter(tmp_path)
+    server._file_mtimes = {}
+
+    server._index_full(tmp_path)
+    assert set(server._file_mtimes) == {"foo.ts"}
+
+    (tmp_path / "bar.spec.ts").write_text("test('y', () => {});")
+    (tmp_path / "baz.ts").write_text("export const y = 2;")
+
+    server._index_incremental(tmp_path)
+    assert set(server._file_mtimes) == {"foo.ts", "baz.ts"}
+
+
 def test_index_full_emits_progress_to_stderr(tmp_path, capsys):
     """_index_full prints at least one progress line and a done line to stderr."""
     from codesurface import server
