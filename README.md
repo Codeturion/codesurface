@@ -7,16 +7,16 @@
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-green)](https://registry.modelcontextprotocol.io/?q=codesurface)
 [![GitHub Stars](https://img.shields.io/github/stars/Codeturion/codesurface)](https://github.com/Codeturion/codesurface)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/Codeturion/codesurface)](https://github.com/Codeturion/codesurface)
-[![Languages](https://img.shields.io/badge/languages-C%23%20%7C%20TS%20%7C%20Java%20%7C%20Go%20%7C%20Python-blueviolet)](https://github.com/Codeturion/codesurface)
+[![Languages](https://img.shields.io/badge/languages-C%23%20%7C%20C%2B%2B%20%7C%20Go%20%7C%20Java%20%7C%20Python%20%7C%20TS-blueviolet)](https://github.com/Codeturion/codesurface)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Blog Post](https://img.shields.io/badge/Blog-Benchmark%20Write--up-blue)](https://www.codeturion.me/blog/reducing-llm-agent-hallucinations-through-constrained-api-retrieval)
 
-**MCP server that indexes your codebase's public API at startup and serves it via compact tool responses — saving tokens vs reading source files.**
+**MCP server that indexes your codebase's public API at startup and serves it via compact tool responses, saving tokens vs reading source files.**
 
 Parses source files, extracts public classes/methods/properties/fields/events, and serves them through 5 MCP tools. Works with Claude Code, Cursor, Windsurf, or any MCP-compatible AI tool.
 
-**Supported languages:** C# (`.cs`), Go (`.go`), Java (`.java`), Python (`.py`), TypeScript/TSX (`.ts`, `.tsx`)
+**Supported languages:** C# (`.cs`), C++ headers (`.h`, `.hpp`, `.hxx`, `.h++`), Go (`.go`), Java (`.java`), Python (`.py`), TypeScript/JavaScript (`.ts`, `.tsx`, `.js`, `.jsx`)
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ Add to your `.mcp.json`:
 }
 ```
 
-Point `--project` at any directory containing supported source files — a Unity `Assets/Scripts` folder, a Spring Boot project, a .NET `src/` tree, a Node.js/React project, a Python package, etc. Languages are auto-detected.
+Point `--project` at any directory containing supported source files (a Unity `Assets/Scripts` folder, a Spring Boot project, a .NET `src/` tree, a Node.js/React project, a Python package, etc.). Languages are auto-detected.
 
 Restart your AI tool and ask: *"What methods does MyService have?"*
 
@@ -66,9 +66,14 @@ Never read a full file when you have a line number. Only fall back to Grep/Read 
 |------|---------|---------|
 | `search` | Find APIs by keyword | "MergeService", "BlastBoard", "GridCoord" |
 | `get_signature` | Exact signature by name or FQN | "TryMerge", "CampGame.Services.IMergeService.TryMerge" |
-| `get_class` | Full class reference card — all public members | "BlastBoardModel" → all methods/fields/properties |
+| `get_class` | Full class reference card with all public members | "BlastBoardModel" → all methods/fields/properties |
 | `get_stats` | Overview of indexed codebase | File count, record counts, namespace breakdown |
 | `reindex` | Incremental index update (mtime-based) | Only re-parses changed/new/deleted files. Also runs automatically on query misses |
+
+`search`, `get_signature`, and `get_class` accept two optional filters:
+
+- `file_path`: scope results to a directory prefix or exact file (e.g. `"src/services/"` or `"src/services/MergeService.ts"`)
+- `include_tests`: include test files in results (default `false`). Detects `__tests__/`, `tests/`, `test/`, `*.test.*`, `*.spec.*`, `*_test.*`, `test_*`
 
 ## Tested On
 
@@ -118,7 +123,7 @@ Read("Converter.java", offset=504, limit=10)  # 10 lines, ~200 tokens
 
 Measured across 5 real-world projects in 5 languages, each using a 10-step cross-cutting research workflow.
 
-![Total Tokens — Cross-Language Comparison](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/01-total-tokens.png)
+![Total Tokens, Cross-Language Comparison](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/01-total-tokens.png)
 
 | Language | Project | Files | Records | MCP | Skilled | Naive | MCP vs Skilled |
 |----------|---------|------:|--------:|----:|--------:|------:|---------------:|
@@ -139,6 +144,34 @@ Even with follow-up reads for implementation detail, the hybrid MCP + targeted R
 ![Per Question](https://raw.githubusercontent.com/Codeturion/codesurface/master/docs/images/02-per-step.png)
 
 See [workflow-benchmark.md](workflow-benchmark.md) for the full step-by-step analysis across all languages.
+
+## Filtering What Gets Indexed
+
+By default, codesurface skips common vendored, build, and VCS directories: `node_modules`, `vendor`, `bin`, `obj`, `dist`, `build`, `target`, `.git`, `.venv`, `__pycache__`, and a few dozen others. Git worktrees and submodules are also skipped.
+
+To exclude additional paths:
+
+**Project-level (committed):** create a `.codesurfaceignore` file at your project root with one glob per line.
+
+```
+generated/**
+docs/**
+**/*.pb.go
+```
+
+**Per-instance (CLI):** pass `--exclude` with comma-separated globs.
+
+```json
+{
+  "command": "uvx",
+  "args": ["codesurface", "--project", "src", "--exclude", "generated/**,vendor/**"]
+}
+```
+
+Other indexing flags:
+
+- `--include-submodules`: index git submodules (skipped by default)
+- `--language <name>`: pin to a single parser (e.g. `--language cpp`) instead of auto-detecting
 
 ## Multiple Projects
 
@@ -189,15 +222,17 @@ pip install codesurface
 ```
 codesurface/
 ├── src/codesurface/
-│   ├── server.py           # MCP server — 5 tools
+│   ├── server.py           # MCP server with 5 tools
 │   ├── db.py               # SQLite + FTS5 database layer
+│   ├── filters.py          # PathFilter (default exclusions, .codesurfaceignore, --exclude)
 │   └── parsers/
 │       ├── base.py         # BaseParser ABC
+│       ├── cpp.py          # C++ header parser
 │       ├── csharp.py       # C# parser
 │       ├── go.py           # Go parser
 │       ├── java.py         # Java parser
 │       ├── python_parser.py # Python parser
-│       └── typescript.py   # TypeScript/TSX parser
+│       └── typescript.py   # TypeScript/JavaScript parser
 ├── pyproject.toml
 └── README.md
 ```
@@ -208,15 +243,15 @@ codesurface/
 <summary>Troubleshooting</summary>
 
 **"No codebase indexed"**
-- Ensure `--project` points to a directory containing supported source files (`.cs`, `.go`, `.java`, `.py`, `.ts`, `.tsx`)
-- The server indexes at startup — check stderr for the "Indexed N records" message
+- Ensure `--project` points to a directory containing supported source files (`.cs`, `.h`, `.hpp`, `.go`, `.java`, `.py`, `.ts`, `.tsx`, `.js`, `.jsx`)
+- The server indexes at startup. Check stderr for `[codesurface] scanning N files...` and `[codesurface] done:` lines
 
 **Server won't start**
 - Check Python version: `python --version` (needs 3.10+)
 - Check `mcp[cli]` is installed: `pip install mcp[cli]`
 
 **Stale results after editing source files**
-- The index auto-refreshes on query misses — if you add a new class and query it, the server reindexes and retries automatically
+- The index auto-refreshes on query misses. If you add a new class and query it, the server reindexes and retries automatically
 - You can also call `reindex()` manually to force an incremental update
 
 </details>
