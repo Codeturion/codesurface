@@ -61,6 +61,36 @@ def test_incremental_walk_applies_parser_skip_suffixes(tmp_path):
     assert set(server._file_mtimes) == {"foo.ts", "baz.ts"}
 
 
+def test_incremental_honors_language_pinning(tmp_path):
+    """When --language pins a single parser, _index_incremental must use the
+    same single parser. Regression check: previously called
+    get_parsers_for_project which auto-detected all languages, so a
+    polyglot project with --language=cpp would falsely report .py files
+    as 'added' on first reindex.
+    """
+    from codesurface import server
+    from codesurface.filters import PathFilter
+
+    (tmp_path / "foo.py").write_text("x = 1\n")
+    (tmp_path / "bar.ts").write_text("export const y = 2;")
+
+    server._conn = None
+    server._project_path = tmp_path
+    server._path_filter = PathFilter(tmp_path)
+    server._file_mtimes = {}
+    server._language = "python"
+
+    server._index_full(tmp_path, language="python")
+    assert set(server._file_mtimes) == {"foo.py"}
+
+    msg, changed = server._index_incremental(tmp_path)
+    assert not changed
+    assert "No changes detected" in msg
+    assert set(server._file_mtimes) == {"foo.py"}
+
+    server._language = None  # restore default for other tests
+
+
 def test_index_full_emits_progress_to_stderr(tmp_path, capsys):
     """_index_full prints at least one progress line and a done line to stderr."""
     from codesurface import server

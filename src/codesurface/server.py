@@ -28,6 +28,7 @@ _project_path: Path | None = None
 _file_mtimes: dict[str, float] = {}  # rel_path → mtime
 _index_fresh: bool = True  # True = checked for changes since last hit; skip auto-reindex
 _path_filter: PathFilter | None = None
+_language: str | None = None  # CLI --language flag, pins indexing to a single parser
 
 
 def _count_files(
@@ -126,8 +127,12 @@ def _index_incremental(project_path: Path) -> tuple[str, bool]:
 
     # Use per-parser walks so the same skip rules as _index_full apply
     # (skip_suffixes, skip_files, _should_skip_dir). This keeps _file_mtimes
-    # in sync with what actually gets parsed.
-    parsers = get_parsers_for_project(project_path, path_filter=_path_filter)
+    # in sync with what actually gets parsed. Honor --language pinning so
+    # incremental and full indexing see the same parser set.
+    if _language:
+        parsers = [get_parser(_language)]
+    else:
+        parsers = get_parsers_for_project(project_path, path_filter=_path_filter)
     ext_to_parser: dict[str, object] = {}
     for parser in parsers:
         for ext in parser.file_extensions:
@@ -614,8 +619,9 @@ def main():
                         help="Include git submodules in indexing (excluded by default)")
     args, remaining = parser.parse_known_args()
 
-    global _project_path, _path_filter
+    global _project_path, _path_filter, _language
 
+    _language = args.language
     exclude_globs = [g.strip() for g in args.exclude.split(",")] if args.exclude else []
 
     if args.project:
