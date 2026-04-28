@@ -12,6 +12,7 @@ Doc comments: Doxygen /** */ blocks and /// lines with @brief/@param/@return
 extraction.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -20,12 +21,6 @@ from .base import BaseParser
 # ---------------------------------------------------------------------------
 # Skip patterns
 # ---------------------------------------------------------------------------
-
-_SKIP_DIRS = frozenset({
-    "build", ".git", "third_party", "vendor", "test", "tests",
-    "examples", "node_modules", ".cache", "obj", "out",
-    "Debug", "Release", "x64", "x86", ".vs",
-})
 
 _SKIP_DIR_PREFIXES = ("cmake-build-",)
 
@@ -239,27 +234,11 @@ class CppParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".h", ".hpp", ".hxx", ".h++"]
 
-    def parse_directory(self, directory: Path) -> list[dict]:
-        """Override to skip build/vendor/test directories."""
-        records: list[dict] = []
-        ext_set = set(self.file_extensions)
-        for f in sorted(directory.rglob("*")):
-            if f.suffix not in ext_set:
-                continue
-            parts = f.relative_to(directory).parts
-            if any(
-                p in _SKIP_DIRS
-                or any(p.startswith(pfx) for pfx in _SKIP_DIR_PREFIXES)
-                for p in parts
-            ):
-                continue
-            try:
-                records.extend(self.parse_file(f, directory))
-            except Exception as e:
-                import sys
-                print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
-                continue
-        return records
+    def _should_skip_dir(self, name: str) -> bool:
+        return (
+            name in ("Debug", "Release", "x64", "x86")
+            or any(name.startswith(pfx) for pfx in _SKIP_DIR_PREFIXES)
+        )
 
     def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
         return _parse_cpp_file(path, base_dir)
@@ -272,11 +251,12 @@ class CppParser(BaseParser):
 def _parse_cpp_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single C++ header file and extract public API members."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = path.relative_to(base_dir).as_posix()
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
 
     # Skip generated files

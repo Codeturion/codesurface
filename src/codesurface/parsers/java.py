@@ -5,20 +5,12 @@ interfaces, enums, records, annotation types, and their members.
 Javadoc comments (/** ... */) are extracted as summaries.
 """
 
+import os
 import re
+import sys
 from pathlib import Path
 
 from .base import BaseParser
-
-
-# --- Skip patterns ---
-
-_SKIP_DIRS = frozenset({
-    "test", "tests", "target", "build", ".gradle", ".git",
-    "node_modules", ".mvn", "out", "generated",
-    "generated-sources", "generated-test-sources",
-    ".idea", "bin",
-})
 
 _SKIP_SUFFIXES = (
     "Test.java",
@@ -131,25 +123,13 @@ class JavaParser(BaseParser):
     def file_extensions(self) -> list[str]:
         return [".java"]
 
-    def parse_directory(self, directory: Path) -> list[dict]:
-        """Override to skip test/build directories."""
-        records = []
-        for f in sorted(directory.rglob("*.java")):
-            parts = f.relative_to(directory).parts
-            if any(p in _SKIP_DIRS for p in parts):
-                continue
-            fname = f.name
-            if fname in _SKIP_FILES:
-                continue
-            if any(fname.endswith(s) for s in _SKIP_SUFFIXES):
-                continue
-            try:
-                records.extend(self.parse_file(f, directory))
-            except Exception as e:
-                import sys
-                print(f"codesurface: failed to parse {f}: {e}", file=sys.stderr)
-                continue
-        return records
+    @property
+    def skip_suffixes(self) -> tuple[str, ...]:
+        return _SKIP_SUFFIXES
+
+    @property
+    def skip_files(self) -> frozenset[str]:
+        return _SKIP_FILES
 
     def parse_file(self, path: Path, base_dir: Path) -> list[dict]:
         return _parse_java_file(path, base_dir)
@@ -158,11 +138,12 @@ class JavaParser(BaseParser):
 def _parse_java_file(path: Path, base_dir: Path) -> list[dict]:
     """Parse a single .java file and extract public API members."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
     except (OSError, UnicodeDecodeError):
         return []
 
-    rel_path = str(path.relative_to(base_dir)).replace("\\", "/")
+    rel_path = os.path.relpath(path, base_dir).replace("\\", "/")
     lines = text.splitlines()
     records: list[dict] = []
 
